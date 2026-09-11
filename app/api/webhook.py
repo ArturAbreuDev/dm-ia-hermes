@@ -126,9 +126,12 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         logger.info("Handoff pedido por IGSID=%s; nenhuma resposta automática", sender_id)
         return
 
+    as_voice = voice.is_voice_moment(text, incoming_is_audio)
     first_name = voice.first_speakable_name(get_user_profile(sender_id))
 
-    result = generate_sales_reply(sender_id, text, first_name=first_name)
+    result = generate_sales_reply(
+        sender_id, text, first_name=first_name, as_voice=as_voice
+    )
     if not result.should_send:
         print("ig_webhook no_reply sender_id=%s" % sender_id, flush=True)
         return

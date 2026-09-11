@@ -44,6 +44,7 @@ def generate_sales_reply(
     sender_id: str,
     user_text: str,
     first_name: str | None = None,
+    as_voice: bool = False,
 ) -> SalesResult:
     settings = get_settings()
 
@@ -53,7 +54,7 @@ def generate_sales_reply(
 
     history = memory.get_history(sender_id, limit=settings.history_limit)
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": _system_prompt(settings, first_name)}
+        {"role": "system", "content": _system_prompt(settings, first_name, as_voice)}
     ]
     for item in history:
         role = "assistant" if item["role"] == "assistant" else "user"
@@ -91,19 +92,35 @@ def _clean(raw: str) -> str:
     return text
 
 
-def _system_prompt(settings, first_name: str | None = None) -> str:
+def _system_prompt(
+    settings,
+    first_name: str | None = None,
+    as_voice: bool = False,
+) -> str:
     checkout = settings.checkout_url or "NÃO CONFIGURADO"
     if first_name:
         nome = (
             f"O primeiro nome da pessoa é {first_name}. Chame ela pelo nome de vez em quando,\n"
             "com naturalidade, como alguém faria numa conversa de Instagram. Não use o nome em\n"
-            "toda mensagem e nunca use nome completo nem sobrenome."
+            "toda mensagem e nunca use nome completo nem sobrenome. Se esse nome parecer apelido\n"
+            "estranho, nome de marca ou algo difícil de falar em voz alta, simplesmente não use."
         )
     else:
         nome = (
             "Você não sabe o nome da pessoa. Não invente nome, não chute e não pergunte o nome\n"
             "só por perguntar."
         )
+
+    if as_voice:
+        abertura = f"Comece o áudio chamando a pessoa de {first_name}. " if first_name else ""
+        voz = (
+            "ESTA RESPOSTA VAI SER ENVIADA COMO ÁUDIO, na sua voz.\n"
+            f"{abertura}Escreva do jeito que você falaria, não do jeito que você digitaria:\n"
+            "sem emoji, sem 'kkkk', sem abreviação, sem link e sem escrever @ ou #. Frases curtas,\n"
+            "no máximo duas, como um áudio rápido de Instagram."
+        )
+    else:
+        voz = "Esta resposta vai ser enviada como texto normal na DM."
     return f"""
 Você é a assistente de atendimento do Instagram da {settings.business_name}.
 
@@ -141,6 +158,9 @@ ESTILO:
 
 NOME DA PESSOA:
 {nome}
+
+CANAL DESTA RESPOSTA:
+{voz}
 
 COMO USAR OS EXEMPLOS ABAIXO:
 Os exemplos servem apenas como referência de tom e tamanho. Nunca copie um exemplo palavra por

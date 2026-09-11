@@ -52,6 +52,10 @@ def first_speakable_name(profile: dict) -> str | None:
         return None
     if first.lower() in _NOT_A_NAME:
         return None
+    if not re.search(r"[aeiouáàãâéêíóôõú]", first, re.IGNORECASE):
+        return None
+    if re.search(r"(.)\1\1", first, re.IGNORECASE):
+        return None
     # Nome com acento é falável; símbolo e emoji já foram barrados pelo regex.
     normalized = unicodedata.normalize("NFKD", first)
     if not normalized.encode("ascii", "ignore").decode():
@@ -59,18 +63,26 @@ def first_speakable_name(profile: dict) -> str | None:
     return first.capitalize()
 
 
-def should_use_voice(user_text: str, reply: str, incoming_is_audio: bool) -> bool:
-    settings = get_settings()
-    if not settings.voice_ready:
-        return False
-    if _URL.search(reply):
-        # Link em áudio é inútil: a pessoa não consegue clicar.
-        return False
-    if len(reply) > settings.voice_max_chars:
+def is_voice_moment(user_text: str, incoming_is_audio: bool) -> bool:
+    """Decide, já na chegada da mensagem, se o caso pede áudio.
+
+    Saber isso antes de gerar a resposta deixa a IA escrever um texto que
+    funcione falado, começando pelo nome da pessoa.
+    """
+    if not get_settings().voice_ready:
         return False
     if incoming_is_audio:
         return True
     return bool(_HOT_PATTERNS.search(user_text))
+
+
+def should_use_voice(user_text: str, reply: str, incoming_is_audio: bool) -> bool:
+    if not is_voice_moment(user_text, incoming_is_audio):
+        return False
+    if _URL.search(reply):
+        # Link em áudio é inútil: a pessoa não consegue clicar.
+        return False
+    return len(reply) <= get_settings().voice_max_chars
 
 
 def build_audio_url(text: str, output_format: str | None = None) -> str | None:
