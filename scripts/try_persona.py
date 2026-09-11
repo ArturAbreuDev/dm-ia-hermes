@@ -8,9 +8,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 get_settings.cache_clear()
 
 CONVERSATIONS = [
+    ["oi tudo bem?", "vc é linda demais", "tem mais foto?", "quanto é?", "quero sim"],
     ["gata"],
-    ["oi tudo bem", "vc é linda demais", "tem mais foto?"],
-    ["quanto é?"],
     ["asdasdasd"],
     ["quero agora manda o link"],
     ["não quero nada, obrigado"],
