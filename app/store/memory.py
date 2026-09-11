@@ -212,6 +212,16 @@ def bump_lead_counter(sender_id: str, campo: str) -> int:
     return valor
 
 
+def mark_link_sent(sender_id: str) -> None:
+    """Guarda em que altura da conversa o link saiu, para saber quando desistir."""
+    lead = get_lead(sender_id)
+    if lead.get("link_sent"):
+        return
+    lead["link_sent"] = True
+    lead["link_sent_at"] = int(lead.get("replies", 0))
+    save_lead(sender_id, lead)
+
+
 def is_paid(sender_id: str) -> bool:
     return bool(get_lead(sender_id).get("paid"))
 

@@ -50,7 +50,7 @@ def generate_sales_reply(
     story_reply: str | None = None,
     must_reply: bool = False,
     already_paid: bool = False,
-    support: bool = False,
+    stance: Any = None,
 ) -> SalesResult:
     settings = get_settings()
 
@@ -71,7 +71,7 @@ def generate_sales_reply(
                 story_reply=story_reply,
                 must_reply=must_reply,
                 already_paid=already_paid,
-                support=support,
+                stance=stance,
             ),
         }
     ]
@@ -144,6 +144,64 @@ def _clean(raw: str) -> str:
     return text
 
 
+def _blocos_de_situacao(flags, stance, settings) -> list[str]:
+    """Instruções que só valem para a mensagem de agora."""
+    blocos: list[str] = []
+
+    if "erro_pagamento" in flags:
+        blocos.append(
+            "SITUAÇÃO: deu erro no pagamento dela. Isso é alguém tentando te pagar, então\n"
+            "trate com cuidado: peça para tentar de novo em alguns minutinhos e esperar um\n"
+            "pouco, que às vezes demora pra cair. Leve e tranquila, sem drama, sem explicar\n"
+            "sistema, sem pedir desculpa formal, sem prometer que você vai resolver.\n"
+            "Não mande o link de novo na mesma frase em que pede pra esperar."
+        )
+
+    if "ia" in flags:
+        blocos.append(
+            "SITUAÇÃO: ela desconfia que você é robô, IA ou resposta automática.\n"
+            "NÃO discuta isso. Não jure que é real, não diga \"sou humana\", não diga \"sou\n"
+            "de carne e osso\", não se explique e não se ofenda: quanto mais você prova,\n"
+            "mais parece robô. Dê de ombros com humor em POUCAS palavras, como uma pessoa\n"
+            "faria ao ouvir uma bobagem, e siga a conversa de onde parou."
+        )
+
+    if "graca" in flags:
+        blocos.append(
+            "SITUAÇÃO: ela está pedindo de graça, pedindo prévia, amostra, ou dizendo que\n"
+            "não tem dinheiro. Você NUNCA manda nada de graça, nem uma foto, nem prévia,\n"
+            "nem \"só uma\". Mas não dê sermão, não cobre, não explique que é seu trabalho e\n"
+            "não pareça irritada. Desconversa com charme em uma frase curta e pronto.\n"
+            "Não repita a oferta nem insista: se ela quiser, ela já sabe onde é."
+        )
+
+    return blocos
+
+
+def _bloco_despedida(stance) -> str:
+    """Fica no fim do prompt de propósito: a última instrução é a que pesa mais."""
+    saida = getattr(stance, "farewell", None)
+    if saida is None:
+        return ""
+    volta = "que já volta mais tarde" if saida.coming_back else "que amanhã você fala"
+    return (
+        "\n--------------------------------------------------\n"
+        "VOCÊ ESTÁ SAINDO AGORA\n"
+        "--------------------------------------------------\n\n"
+        "Esta é a sua última mensagem nesta conversa, e ela tem DUAS partes obrigatórias:\n"
+        f"1. responda o que a pessoa disse, em poucas palavras;\n"
+        f"2. emende, na MESMA mensagem, que você vai {saida.doing} e {volta}.\n"
+        "\n"
+        f"A parte 2 é obrigatória. Não termine esta mensagem sem dizer que vai {saida.doing}.\n"
+        "\n"
+        "Do jeito que qualquer pessoa avisa que vai sair: leve, sem pedir desculpa, sem se\n"
+        "justificar, sem tchau dramático, sem marcar horário e SEM pergunta no final.\n"
+        "Não diga que está encerrando a conversa nem que não vai mais responder: você não\n"
+        "está dispensando ninguém, só está indo fazer sua vida.\n"
+        "Não aproveite a despedida para vender nada."
+    )
+
+
 def _system_prompt(
     settings,
     first_name: str | None = None,
@@ -152,9 +210,11 @@ def _system_prompt(
     story_reply: str | None = None,
     must_reply: bool = False,
     already_paid: bool = False,
-    support: bool = False,
+    stance: Any = None,
 ) -> str:
     checkout = settings.checkout_url or "NÃO CONFIGURADO"
+    flags = getattr(stance, "flags", frozenset()) or frozenset()
+    support = bool(getattr(stance, "support", False))
     if already_paid:
         pos_venda = (
             "--------------------------------------------------\n"
@@ -171,12 +231,16 @@ def _system_prompt(
             "Nada de \"quer ver mais?\", \"tenho outras coisas\", \"se quiser eu te mando\".\n"
             "\n"
             "Trate a pessoa como cliente, não como lead.\n"
+            "O pagamento JÁ ACONTECEU: fale no passado. Nunca diga \"assim que pagar\",\n"
+            "\"quando você pagar\" ou \"depois do pagamento cai lá\" como se fosse futuro.\n"
             "\n"
             "E ENCERRE A CONVERSA. Ela comprou, o assunto acabou. Você é simpática, mas\n"
             "está saindo do chat, não começando um papo:\n"
-            "- no MÁXIMO uma frase curta, nunca duas;\n"
+            "- seja curtíssima, uma frase resolve;\n"
             "- NÃO faça perguntas, não devolva \"e você?\", não puxe assunto;\n"
-            "- não peça para ela te contar nada, não pergunte o que ela achou.\n"
+            "- não peça para ela te contar nada, não pergunte o que ela achou;\n"
+            "- não convide para te procurar aqui depois: nada de \"qualquer coisa me chama\",\n"
+            "  \"se precisar é só falar\" ou \"tô por aqui\".\n"
             "\n"
             "Se ela pedir mais conteúdo ou perguntar se tem novidade, responda que você vai\n"
             "postando aos poucos, que sempre cai coisa nova lá com o tempo, e encerre.\n"
@@ -196,6 +260,9 @@ def _system_prompt(
             )
     else:
         pos_venda = ""
+
+    situacao = "\n\n".join(_blocos_de_situacao(flags, stance, settings))
+    despedida = _bloco_despedida(stance)
     if must_reply:
         obrigatorio = (
             f"NESTA MENSAGEM É PROIBIDO RETORNAR {NO_REPLY}.\n"
@@ -207,7 +274,12 @@ def _system_prompt(
             "recebeu uma descrição, nem comente que é um áudio ou uma foto como se fosse\n"
             "estranho. Reaja como alguém que acabou de ouvir ou ver aquilo.\n"
             "Se a descrição disser que você não conseguiu ouvir o áudio, aí sim peça para a\n"
-            "pessoa repetir, de forma leve."
+            "pessoa repetir, de forma leve.\n"
+            "\n"
+            "SE FOR FOTO OU VÍDEO: você olhou. Então comente algo ESPECÍFICO do que estava\n"
+            "ali, uma coisa concreta que só aparece naquela imagem, e não um elogio genérico\n"
+            "que serviria para qualquer foto. Nada de \"que foto boa\" ou \"gostei\" e pronto.\n"
+            "Fale como quem abriu a foto e reagiu na hora, em uma ou duas frases."
         )
     else:
         obrigatorio = ""
@@ -528,9 +600,12 @@ Se não houver necessidade de responder, retorne exatamente {NO_REPLY}.
 
 {pos_venda}
 
+{situacao}
+
 --------------------------------------------------
 CANAL DESTA RESPOSTA
 --------------------------------------------------
 
 {voz}
+{despedida}
 """.strip()

@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
-from app.services import incoming, payment, stories, timing, voice
+from app.services import engagement, incoming, payment, stories, timing, voice
 from app.services.instagram import (
     get_user_profile,
     send_audio_message,
@@ -134,18 +134,19 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         memory.mark_paid(sender_id)
     already_paid = memory.is_paid(sender_id)
 
-    # Cliente já é cliente: ela se despede em poucas mensagens e para de puxar
-    # papo. A única coisa que continua furando o silêncio é problema de acesso.
-    precisa_suporte = False
-    if already_paid:
-        lead = memory.get_lead(sender_id)
-        limite = settings.post_payment_replies
-        precisa_suporte = payment.needs_support(text) and int(
-            lead.get("paid_support", 0)
-        ) < limite
-        if not precisa_suporte and int(lead.get("paid_replies", 0)) >= limite:
-            logger.info("Ignorado IGSID=%s: já comprou e a conversa já se encerrou", sender_id)
-            return
+    # Um só lugar decide se ainda vale a pena responder, e com que clima.
+    lead = memory.get_lead(sender_id)
+    stance = engagement.decide(lead, text, already_paid)
+    if stance.silent:
+        logger.info("Ignorado IGSID=%s: %s", sender_id, stance.reason)
+        return
+    logger.info(
+        "Clima IGSID=%s motivo=%s sinais=%s despedida=%s",
+        sender_id,
+        stance.reason,
+        sorted(stance.flags) or "-",
+        stance.farewell.doing if stance.farewell else "-",
+    )
 
     if wants_human(text):
         logger.info("Handoff pedido por IGSID=%s; nenhuma resposta automática", sender_id)
@@ -163,7 +164,7 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         story_reply=chegada.story_reply,
         must_reply=chegada.is_media and not already_paid,
         already_paid=already_paid,
-        support=precisa_suporte,
+        stance=stance,
     )
     if not result.should_send:
         logger.info(
@@ -222,8 +223,8 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
 
     send_sender_action(sender_id, "typing_off")
     memory.save_message(sender_id, "assistant", result.reply)
-    if already_paid:
-        memory.bump_lead_counter(
-            sender_id, "paid_support" if precisa_suporte else "paid_replies"
-        )
+    for campo in stance.counters:
+        memory.bump_lead_counter(sender_id, campo)
+    if settings.checkout_url and settings.checkout_url in result.reply:
+        memory.mark_link_sent(sender_id)
     logger.info("Respondido IGSID=%s intent=%s audio=%s", sender_id, result.intent, sent_as_audio)

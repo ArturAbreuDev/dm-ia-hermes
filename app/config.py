@@ -54,6 +54,14 @@ class Settings(BaseSettings):
 
     # Depois que a pessoa paga, a conversa se despede em poucas mensagens.
     post_payment_replies: int = 2
+    # Conversa que não vira venda tem fim: ela se despede e para de responder.
+    max_replies_without_sale: int = 16
+    # Depois de já ter mandado o link, insistir não converte.
+    max_replies_after_link: int = 6
+    # Quantas vezes ela desconversa antes de desistir de quem só quer de graça.
+    freebie_strikes: int = 2
+    # Quem insiste que ela é robô não é convencido, é perdido.
+    ai_strikes: int = 2
 
     reply_delay_enabled: bool = True
     reply_delay_max_seconds: float = 120.0

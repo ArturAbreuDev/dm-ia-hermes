@@ -36,6 +36,36 @@ class ReplyPlan:
         return round(self.silence + self.typing, 1)
 
 
+# A vida dela fora do celular. É o que ela diz que vai fazer quando some da
+# conversa: some por um motivo, no horário em que aquele motivo faz sentido.
+_AGENDA: tuple[tuple[time, time, tuple[str, ...], bool], ...] = (
+    (time(0, 0), time(6, 0), ("dormir",), False),
+    (time(6, 0), time(9, 0), ("tomar café", "me arrumar pra sair", "na academia"), True),
+    (time(9, 0), time(11, 30), ("resolver umas coisas", "numa correria aqui"), True),
+    (time(11, 30), time(14, 0), ("almoçar",), True),
+    (time(14, 0), time(17, 30), ("resolver umas coisas na rua", "num compromisso"), True),
+    (time(17, 30), time(19, 30), ("na academia", "no mercado"), True),
+    (time(19, 30), time(22, 0), ("jantar",), True),
+    (time(22, 0), time(23, 59, 59), ("tomar banho", "deitar"), False),
+)
+
+
+@dataclass
+class Away:
+    """A desculpa de quem está saindo da conversa, não fugindo dela."""
+
+    doing: str
+    coming_back: bool
+
+
+def away_excuse(now: datetime | None = None) -> Away:
+    agora = (now or datetime.now(_BRASILIA)).astimezone(_BRASILIA).time()
+    for inicio, fim, atividades, volta in _AGENDA:
+        if inicio <= agora < fim:
+            return Away(doing=random.choice(atividades), coming_back=volta)
+    return Away(doing="dormir", coming_back=False)
+
+
 def _janela(agora: time) -> str:
     if any(inicio <= agora < fim for inicio, fim in _PICO):
         return "pico"
