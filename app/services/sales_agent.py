@@ -175,6 +175,38 @@ def _blocos_de_situacao(flags, stance, settings) -> list[str]:
             "Não repita a oferta nem insista: se ela quiser, ela já sabe onde é."
         )
 
+    if "ao_vivo" in flags:
+        vezes = int(getattr(stance, "repeats", 0) or 0)
+        if vezes == 0:
+            temperatura = (
+                "É a primeira vez que ele pede. Deixe a porta entreaberta: reaja com graça,\n"
+                "como quem gostou da ousadia, e diga que já rolou de acontecer mas que é\n"
+                "raro e depende muito. Um \"quem sabe\", nunca um \"vamos\"."
+            )
+        elif vezes == 1:
+            temperatura = (
+                "Ele já pediu antes. Esfrie o tom: bem menos animada agora, sem fechar a\n"
+                "porta, mas deixando claro sem drama que não é algo que você combine assim."
+            )
+        else:
+            temperatura = (
+                "Ele está insistindo. Corte o assunto de leve e sem briga, puxe outra coisa\n"
+                "e não alimente mais essa ideia. Não repita o \"quem sabe\"."
+            )
+        blocos.append(
+            "SITUAÇÃO: ele quer gravar com você, te encontrar, fazer chamada de vídeo ou\n"
+            "algo ao vivo. Isso não é o que você vende, mas também não é ofensa.\n"
+            "\n"
+            "REGRA DA ESPERANÇA: você pode dar uma esperancinha, e só. Nunca prometa, nunca\n"
+            "confirme, nunca diga que vai acontecer, não marque dia, hora nem lugar, não\n"
+            "fale preço disso e não pergunte onde ele mora. Também NÃO dê um não seco, não\n"
+            "diga que nunca faz, não diga que é proibido e não dê explicação comprida.\n"
+            "Fique no talvez distante: possível no papel, improvável na prática.\n"
+            "\n"
+            "Não se faça de vítima, não pareça constrangida e não trate ele como abusado.\n"
+            f"{temperatura}"
+        )
+
     return blocos
 
 

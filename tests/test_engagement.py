@@ -41,9 +41,45 @@ def test_reconhece_erro_de_pagamento() -> None:
         assert "erro_pagamento" in engagement.read_flags(frase), frase
 
 
+def test_reconhece_quem_quer_gravar_ou_encontrar() -> None:
+    for frase in [
+        "vc grava com fã?",
+        "quero gravar com vc",
+        "eu pago bem pra gravar com vc",
+        "me chama pra gravar vai",
+        "vamos marcar então",
+        "faz video chamada?",
+        "vamos sair juntos",
+        "quanto pra te ver pessoalmente?",
+        "tem video personalizado?",
+        "queria te conhecer pessoalmente",
+        "bora marcar algo",
+        "vc faz programa?",
+    ]:
+        assert "ao_vivo" in engagement.read_flags(frase), frase
+
+
 def test_conversa_normal_nao_levanta_bandeira() -> None:
-    for frase in ["oi tudo bem?", "quanto custa?", "quero comprar", "vc é linda", ""]:
+    for frase in [
+        "oi tudo bem?",
+        "quanto custa?",
+        "quero comprar",
+        "vc é linda",
+        "que horas vc postou isso?",
+        "[a pessoa te marcou no story dela: uma foto do cachorro]",
+        "vou gravar um audio pra vc",
+        "",
+    ]:
         assert not engagement.read_flags(frase), frase
+
+
+def test_esfria_e_desiste_de_quem_insiste_em_gravar() -> None:
+    limite = get_settings().live_strikes
+    quente = engagement.decide({}, "quero gravar com vc", False)
+    assert quente.repeats == 0 and not quente.silent
+    ultima = engagement.decide({"live_strikes": limite - 1}, "vamos marcar", False)
+    assert ultima.farewell is not None
+    assert engagement.decide({"live_strikes": limite}, "vamos marcar", False).silent
 
 
 def test_erro_de_pagamento_nunca_corta() -> None:

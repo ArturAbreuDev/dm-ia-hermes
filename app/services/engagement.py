@@ -55,6 +55,32 @@ _ERRO_PAGAMENTO = re.compile(
 )
 
 
+# Quer gravar com ela, marcar um encontro, chamada de vídeo, algo ao vivo.
+# Não é pedido absurdo, mas também não é o que está sendo vendido aqui.
+_QUER_AO_VIVO = re.compile(
+    r"(?:"
+    # "grava com fã", "gravar comigo", "gravaria junto"
+    r"grav\w*\s+(?:com|junt\w|contigo|comigo)|"
+    # "quero gravar", "dá pra gravar", "me chama pra gravar", "aceita gravar"
+    r"(?:quero|queria|posso|pode|pod[ei]a|aceita|rola|tem\s+como|d[áa]\s+pra|"
+    r"pra|para)\s+grav\w*|"
+    r"grava[çc][ãa]o\s+(?:com|junt\w)|"
+    r"v[íi]deo\s+(?:personalizad\w|exclusiv\w|s[óo]\s+(?:pra|para)\s+mim)|"
+    r"chamada\s+de\s+v[íi]deo|video\s*(?:chamada|call)|\bvideochamada\b|"
+    r"te\s+(?:ver|conhecer|encontrar|pegar)\s+(?:pessoalmente|ao\s+vivo|de\s+verdade|um\s+dia)|"
+    r"(?:nos|se)\s+(?:ver|encontrar)\b|"
+    r"(?:vamos|podemos|bora|d[áa]\s+pra|quero|queria)\s+(?:marcar|combinar|sair|nos\s+ver)|"
+    r"(?:marcar|combinar)\s+(?:algo|alguma\s+coisa|uma\s+coisa|um\s+encontro|um\s+dia|"
+    r"ent[ãa]o|contigo|comigo)|"
+    r"sair\s+(?:comigo|com\s+voc[êe]|com\s+vc|junt\w)|"
+    r"\b(?:faz|fazer|faria|rola)\s+(?:um\s+)?programa\b|"
+    r"quanto\s+(?:pra|para|custa\s+pra)\s+(?:gravar|sair|te\s+ver|um\s+encontro|te\s+conhecer)|"
+    r"\bencontro\b|\bmotel\b|\bdate\b|\bao\s+vivo\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
 def read_flags(text: str) -> frozenset[str]:
     """Lê o que essa mensagem revela sobre a pessoa, não sobre o assunto."""
     if not text:
@@ -66,6 +92,8 @@ def read_flags(text: str) -> frozenset[str]:
         achados.add("ia")
     if _ERRO_PAGAMENTO.search(text):
         achados.add("erro_pagamento")
+    if _QUER_AO_VIVO.search(text):
+        achados.add("ao_vivo")
     return frozenset(achados)
 
 
@@ -84,6 +112,9 @@ class Stance:
     reason: str = "normal"
     flags: frozenset[str] = frozenset()
     counters: tuple[str, ...] = field(default_factory=tuple)
+    # Quantas vezes ela já ouviu esse mesmo pedido. Serve para o tom esfriar
+    # em vez de ela responder a mesma coisa com o mesmo entusiasmo sempre.
+    repeats: int = 0
 
 
 def decide(lead: dict, text: str, paid: bool) -> Stance:
@@ -114,9 +145,10 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
         return contando("replies", reason="erro_pagamento")
 
     if "ia" in flags:
-        if _n(lead, "ai_strikes") >= settings.ai_strikes:
+        vezes = _n(lead, "ai_strikes")
+        if vezes >= settings.ai_strikes:
             return calado("insiste_que_e_bot")
-        return contando("replies", "ai_strikes", reason="acha_que_e_ia")
+        return contando("replies", "ai_strikes", reason="acha_que_e_ia", repeats=vezes)
 
     if "graca" in flags:
         vezes = _n(lead, "free_strikes")
@@ -124,9 +156,27 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
             return calado("so_quer_de_graca")
         if vezes == settings.freebie_strikes - 1:
             return contando(
-                "replies", "free_strikes", farewell=away_excuse(), reason="ultima_de_graca"
+                "replies",
+                "free_strikes",
+                farewell=away_excuse(),
+                reason="ultima_de_graca",
+                repeats=vezes,
             )
-        return contando("replies", "free_strikes", reason="quer_de_graca")
+        return contando("replies", "free_strikes", reason="quer_de_graca", repeats=vezes)
+
+    if "ao_vivo" in flags:
+        vezes = _n(lead, "live_strikes")
+        if vezes >= settings.live_strikes:
+            return calado("insiste_em_gravar")
+        if vezes == settings.live_strikes - 1:
+            return contando(
+                "replies",
+                "live_strikes",
+                farewell=away_excuse(),
+                reason="ultima_ao_vivo",
+                repeats=vezes,
+            )
+        return contando("replies", "live_strikes", reason="quer_ao_vivo", repeats=vezes)
 
     respostas = _n(lead, "replies")
     teto = settings.max_replies_without_sale

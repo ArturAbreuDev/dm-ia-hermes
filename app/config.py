@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     freebie_strikes: int = 2
     # Quem insiste que ela é robô não é convencido, é perdido.
     ai_strikes: int = 2
+    # Quantas vezes ela desconversa sobre gravar/encontrar antes de deixar morrer.
+    live_strikes: int = 3
 
     reply_delay_enabled: bool = True
     reply_delay_max_seconds: float = 120.0
