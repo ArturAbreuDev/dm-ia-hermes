@@ -6,7 +6,8 @@ from fastapi.responses import HTMLResponse
 router = APIRouter(include_in_schema=False)
 
 _CONTACT_EMAIL = "arturdamaceno.dev@gmail.com"
-_BUSINESS_NAME = "Artur Damaceno"
+_BUSINESS_NAME = "Victor Miranda Kauer"
+_BUSINESS_CNPJ = "32.732.388/0001-01"
 _BUSINESS_PHONE = "+55 51 99913-0114"
 
 _PAGE = """<!doctype html>
@@ -97,7 +98,8 @@ atendimento humano quando a pessoa pede.</p>
 
 <h2>Contato</h2>
 <p>E-mail: <a href="mailto:{_CONTACT_EMAIL}">{_CONTACT_EMAIL}</a><br>
-Telefone: {_BUSINESS_PHONE}</p>
+Telefone: {_BUSINESS_PHONE}<br>
+CNPJ: {_BUSINESS_CNPJ}</p>
 
 <h2>Documentos</h2>
 <p><a href="/privacy">Política de Privacidade</a> &middot;
