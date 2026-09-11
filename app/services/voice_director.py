@@ -145,7 +145,11 @@ Return ONLY the ElevenLabs-ready narration.
 _CONTEXT = (
     "The script is a short, flirty Instagram DM voice note in Brazilian Portuguese, spoken by a "
     "young woman to one person. Keep it very short and intimate, never announcer-like. Keep the "
-    "language in Brazilian Portuguese."
+    "language in Brazilian Portuguese.\n"
+    "IMPORTANT OVERRIDE on commas: this is casual speech, not narration. Do NOT add commas for "
+    "breathing. Prefer splitting into short separate sentences with periods. Keep a comma only "
+    "when removing it would change the meaning, and never use more than one comma in the whole "
+    "script. Do not add a vocative comma or a name that is not already in the source text."
 )
 
 # O v3 nem sempre entende tag de pausa; reticência e quebra de linha são mais confiáveis.

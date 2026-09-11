@@ -22,6 +22,32 @@ def send_audio_message(recipient_id: str, audio_url: str) -> dict[str, Any]:
     )
 
 
+def send_sender_action(recipient_id: str, action: str) -> None:
+    """Mostra os indicadores nativos da DM: visualizado e "digitando...".
+
+    Falhar aqui não pode impedir a mensagem de sair, então só registramos o erro.
+    """
+    settings = get_settings()
+    if not settings.instagram_access_token or not settings.instagram_id:
+        return
+
+    try:
+        with httpx.Client(timeout=15) as client:
+            response = client.post(
+                settings.graph_messages_url,
+                params={"access_token": settings.instagram_access_token},
+                headers={
+                    "Authorization": f"Bearer {settings.instagram_access_token}",
+                    "Content-Type": "application/json",
+                },
+                json={"recipient": {"id": recipient_id}, "sender_action": action},
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as extra:
+        detail = getattr(getattr(extra, "response", None), "text", extra)
+        logger.warning("sender_action %s falhou: %s", action, detail)
+
+
 def get_user_profile(igsid: str) -> dict[str, Any]:
     """Busca nome e @ de quem mandou a DM."""
     settings = get_settings()

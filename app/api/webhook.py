@@ -9,7 +9,12 @@ from typing import Any
 
 from app.config import get_settings
 from app.services import timing, voice
-from app.services.instagram import get_user_profile, send_audio_message, send_text_message
+from app.services.instagram import (
+    get_user_profile,
+    send_audio_message,
+    send_sender_action,
+    send_text_message,
+)
 from app.services.sales_agent import generate_sales_reply, wants_human
 from app.store import memory
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
@@ -137,23 +142,43 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         print("ig_webhook no_reply sender_id=%s" % sender_id, flush=True)
         return
 
-    espera = timing.reply_delay_seconds(result.reply, is_hot=as_voice)
-    if espera:
-        logger.info("Esperando %.1fs antes de responder IGSID=%s", espera, sender_id)
-        time.sleep(espera)
+    will_send_audio = voice.should_use_voice(text, result.reply, incoming_is_audio)
+    plan = timing.reply_plan(result.reply, is_hot=as_voice, as_voice=will_send_audio)
+    logger.info(
+        "Plano IGSID=%s silencio=%.1fs digitando=%.1fs audio=%s",
+        sender_id,
+        plan.silence,
+        plan.typing,
+        will_send_audio,
+    )
+
+    # Enquanto ela "não viu", a mensagem fica sem visualizar mesmo.
+    if plan.silence:
+        time.sleep(plan.silence)
+    send_sender_action(sender_id, "mark_seen")
+
+    # O áudio é gerado durante o "digitando", que é justamente o tempo que ela
+    # levaria para gravar. Assim a espera não fica em cima da espera.
+    if plan.typing:
+        send_sender_action(sender_id, "typing_on")
+
+    inicio = time.monotonic()
+    audio_url = voice.build_audio_url(result.reply) if will_send_audio else None
+    restante = plan.typing - (time.monotonic() - inicio)
+    if restante > 0:
+        time.sleep(restante)
 
     sent_as_audio = False
-    if voice.should_use_voice(text, result.reply, incoming_is_audio):
-        audio_url = voice.build_audio_url(result.reply)
-        if audio_url:
-            try:
-                send_audio_message(sender_id, audio_url)
-                sent_as_audio = True
-            except Exception:
-                logger.exception("Falha ao enviar áudio; caindo para texto")
+    if audio_url:
+        try:
+            send_audio_message(sender_id, audio_url)
+            sent_as_audio = True
+        except Exception:
+            logger.exception("Falha ao enviar áudio; caindo para texto")
 
     if not sent_as_audio:
         send_text_message(sender_id, result.reply)
 
+    send_sender_action(sender_id, "typing_off")
     memory.save_message(sender_id, "assistant", result.reply)
     logger.info("Respondido IGSID=%s intent=%s audio=%s", sender_id, result.intent, sent_as_audio)

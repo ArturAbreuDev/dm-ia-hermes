@@ -12,13 +12,14 @@ logger = logging.getLogger(__name__)
 
 # Sinais de que a pessoa passou de curiosa para compradora.
 _HOT_PATTERNS = re.compile(
-    r"\b("
-    r"vende|vendendo|venda|"
-    r"conte[úu]do|pack|nudes?|foto[s]?|v[íi]deo[s]?|"
-    r"quanto|pre[çc]o|valor|custa|"
-    r"compr(o|ar|a)|paga(r|mento)|pix|"
-    r"quero|link|telegram|assinar|assinatura"
-    r")\b",
+    r"(?:"
+    r"\bvende\b|\bvendendo\b|\bvenda\b|"
+    r"\bconte[úu]do\b|\bpack\b|\bpacks\b|\bnudes?\b|"
+    r"quanto\s+(?:custa|[ée]|sai)|"
+    r"quero\s+(?:compr\w*|assinar|o\s+pack|o\s+conte[úu]do)|"
+    r"vou\s+compr\w*|"
+    r"como\s+(?:funciona|fa[çc]o\s+pra\s+compr\w*)"
+    r")",
     re.IGNORECASE,
 )
 
@@ -98,21 +99,42 @@ def build_audio_url(text: str, output_format: str | None = None) -> str | None:
 
 _EMOJI = re.compile(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
 _LAUGH = re.compile(r"\b(?:k{3,}|h{3,}|(?:ha){2,}h?|rs{2,})\b", re.IGNORECASE)
+# A gíria fica bonita na DM escrita, mas falada em voz alta soa péssima.
+# Então tudo o que ela digita abreviado volta ao normal antes de virar áudio.
 _ABBREVIATIONS = {
     r"\bvc\b": "você",
     r"\bvcs\b": "vocês",
     r"\btb\b": "também",
     r"\btbm\b": "também",
     r"\bpq\b": "porque",
+    r"\bpqp\b": "puta que pariu",
     r"\bq\b": "que",
     r"\bmt\b": "muito",
     r"\bmto\b": "muito",
+    r"\bmta\b": "muita",
     r"\bmsm\b": "mesmo",
+    r"\bnsei\b": "não sei",
+    r"\bntd\b": "nada",
+    r"\bsla\b": "sei lá",
+    r"\bvdd\b": "verdade",
+    r"\bdps\b": "depois",
+    r"\bagr\b": "agora",
     r"\bblz\b": "beleza",
     r"\bobg\b": "obrigada",
     r"\bhj\b": "hoje",
+    r"\bamh\b": "amanhã",
     r"\bta\b": "tá",
+    r"\btava\b": "tava",
     r"\bcmg\b": "comigo",
+    r"\bctg\b": "contigo",
+    r"\bfds\b": "fim de semana",
+    r"\bss\b": "sim",
+    r"\bnn\b": "não",
+    r"\bqnd\b": "quando",
+    r"\bqse\b": "quase",
+    r"\btd\b": "tudo",
+    r"\bnd\b": "nada",
+    r"\bpfv\b": "por favor",
     r"R\$\s*": "",
 }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -53,8 +54,17 @@ def generate_sales_reply(
         return SalesResult(reply="", intent="no_key")
 
     history = memory.get_history(sender_id, limit=settings.history_limit)
+    use_name = _should_use_name(first_name, history)
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": _system_prompt(settings, first_name, as_voice)}
+        {
+            "role": "system",
+            "content": _system_prompt(
+                settings,
+                first_name if use_name else None,
+                as_voice,
+                knows_name=bool(first_name),
+            ),
+        }
     ]
     for item in history:
         role = "assistant" if item["role"] == "assistant" else "user"
@@ -83,6 +93,26 @@ def generate_sales_reply(
     return SalesResult(reply=reply[:900], intent="chat")
 
 
+def _should_use_name(first_name: str | None, history: list[dict[str, Any]]) -> bool:
+    """Decide se cabe chamar a pessoa pelo nome nesta resposta.
+
+    Nome repetido soa de vendedor de telemarketing. Então ele entra só na
+    primeira resposta da conversa, e depois raramente, nunca duas vezes seguidas.
+    """
+    if not first_name:
+        return False
+
+    ditas = [item["text"] for item in history if item["role"] == "assistant"]
+    if not ditas:
+        # Primeira resposta da conversa: é onde chamar pelo nome soa mais natural.
+        return True
+
+    alvo = first_name.lower()
+    if any(alvo in texto.lower() for texto in ditas[-6:]):
+        return False
+    return random.random() < 0.25
+
+
 def _clean(raw: str) -> str:
     if NO_REPLY in raw.upper():
         return ""
@@ -96,14 +126,19 @@ def _system_prompt(
     settings,
     first_name: str | None = None,
     as_voice: bool = False,
+    knows_name: bool = False,
 ) -> str:
     checkout = settings.checkout_url or "NÃO CONFIGURADO"
     if first_name:
         nome = (
-            f"O primeiro nome da pessoa é {first_name}. Chame ela pelo nome de vez em quando,\n"
-            "com naturalidade, como alguém faria numa conversa de Instagram. Não use o nome em\n"
-            "toda mensagem e nunca use nome completo nem sobrenome. Se esse nome parecer apelido\n"
-            "estranho, nome de marca ou algo difícil de falar em voz alta, simplesmente não use."
+            f"Nesta resposta específica você PODE chamar a pessoa de {first_name}, uma vez só.\n"
+            "Use só o primeiro nome, nunca o nome completo. Se não couber com naturalidade,\n"
+            "não force: é melhor não usar do que soar como vendedor de telemarketing."
+        )
+    elif knows_name:
+        nome = (
+            "NESTA RESPOSTA NÃO USE O NOME DA PESSOA. Você já chamou ela pelo nome recentemente,\n"
+            "e repetir soa forçado. Fale normalmente, sem vocativo nenhum."
         )
     else:
         nome = (
@@ -112,32 +147,37 @@ def _system_prompt(
         )
 
     if as_voice:
-        abertura = (
-            f"Comece a mensagem com o nome dela: \"{first_name}, ...\". Isso é obrigatório "
-            "nesta resposta.\n"
-            if first_name
-            else ""
-        )
         voz = (
             "ATENÇÃO: esta resposta NÃO vai ser digitada. Ela vai ser gravada na sua voz e\n"
             "enviada como áudio na DM. Escreva exatamente as palavras que você falaria.\n"
-            f"{abertura}"
-            "Proibido nesta resposta: emoji, 'kkkk', abreviação, link, @ e #.\n"
+            "Proibido nesta resposta: emoji, 'kkkk', abreviação, gíria abreviada, link, @ e #.\n"
             "No máximo duas frases curtas, como um áudio rápido de Instagram.\n"
             "\n"
-            "A pontuação é o que define como você soa, então use com intenção:\n"
-            "- vírgula onde você tomaria fôlego;\n"
-            "- reticências para hesitar ou provocar, tipo \"tenho sim... mas depende\";\n"
-            "- ponto de interrogação para a frase subir no fim;\n"
-            "- ponto final no fim da última frase, sempre;\n"
-            "- nada de ponto de exclamação em sequência nem CAIXA ALTA.\n"
-            "Escreva com acento e com a primeira letra maiúscula, porque texto sem acento\n"
-            "sai com a pronúncia errada.\n"
+            "Sobre pontuação, o mais importante: NÃO encha de vírgula. Fale em frases curtas e\n"
+            "separe com ponto, que é assim que as pessoas falam de verdade. Só use vírgula quando\n"
+            "sem ela a frase fica confusa.\n"
+            "Diga \"Tenho sim. Quer que eu te explique?\" e não \"Tenho sim, quer que eu te\n"
+            "explique?\". Reticências só quando você quer provocar ou hesitar de propósito.\n"
+            "Ponto final no fim, sempre. Nada de exclamação em sequência nem CAIXA ALTA.\n"
+            "Escreva com acento e com a primeira letra maiúscula, porque texto sem acento sai\n"
+            "com a pronúncia errada.\n"
             "\n"
             "O resto da sua personalidade e das suas regras continua valendo."
         )
     else:
-        voz = "Esta resposta vai ser enviada como texto normal na DM, do jeito que você digita."
+        voz = (
+            "Esta resposta vai ser enviada como texto digitado na DM, então escreva como uma\n"
+            "menina de vinte e poucos anos digita no Instagram, não como se fosse uma redação.\n"
+            "\n"
+            "Use pouca vírgula. Na maioria das mensagens curtas não precisa de nenhuma. Escreva\n"
+            "\"tenho simm 👀 quer que eu te explique?\" e não \"tenho sim, quer que eu te\n"
+            "explique?\". Pode mandar sem ponto final, pode começar com letra minúscula.\n"
+            "\n"
+            "Pode e deve usar gíria e abreviação de DM, com moderação e sem parecer robô que\n"
+            "decorou uma lista: mt (muito), nsei (não sei), vc, pq, tbm, td, sla, vdd, dps, agr,\n"
+            "msm, ss, kk. Também pode alongar letra pra dar tom, tipo \"simm\", \"nossaa\",\n"
+            "\"aiii\". Nunca use mais de duas abreviações na mesma mensagem."
+        )
     return f"""
 Você é a assistente de atendimento do Instagram da {settings.business_name}.
 
