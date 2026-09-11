@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import logging
 import wave
+from dataclasses import dataclass
 
 import httpx
 
@@ -13,40 +14,53 @@ logger = logging.getLogger(__name__)
 _API_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
 
-def synthesize_wav(text: str) -> bytes | None:
-    """Gera a fala no ElevenLabs e devolve um WAV.
+@dataclass
+class Clip:
+    data: bytes
+    extension: str
+    mime: str
 
-    O Instagram só aceita aac, m4a, wav ou mp4, então pedimos PCM cru e
-    montamos o container WAV aqui.
+
+def synthesize(text: str) -> Clip | None:
+    """Gera a fala no ElevenLabs.
+
+    O formato vem de ELEVENLABS_OUTPUT_FORMAT. Se for PCM, montamos o container
+    WAV aqui, porque o ElevenLabs devolve as amostras cruas.
     """
     settings = get_settings()
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         return None
 
+    output_format = settings.elevenlabs_output_format
     url = _API_URL.format(voice_id=settings.elevenlabs_voice_id)
     try:
         with httpx.Client(timeout=60) as client:
             response = client.post(
                 url,
-                params={"output_format": f"pcm_{settings.elevenlabs_sample_rate}"},
+                params={"output_format": output_format},
                 headers={
                     "xi-api-key": settings.elevenlabs_api_key,
                     "Content-Type": "application/json",
                 },
-                json={
-                    "text": text,
-                    "model_id": settings.elevenlabs_model,
-                },
+                json={"text": text, "model_id": settings.elevenlabs_model},
             )
             response.raise_for_status()
-            pcm = response.content
+            audio = response.content
     except httpx.HTTPError:
         logger.exception("Falha ao gerar áudio no ElevenLabs")
         return None
 
-    if not pcm:
+    if not audio:
         return None
-    return _wrap_pcm_in_wav(pcm, settings.elevenlabs_sample_rate)
+
+    if output_format.startswith("pcm_"):
+        rate = int(output_format.removeprefix("pcm_"))
+        return Clip(_wrap_pcm_in_wav(audio, rate), "wav", "audio/wav")
+    if output_format.startswith("mp3_"):
+        return Clip(audio, "mp3", "audio/mpeg")
+    if output_format.startswith("opus_"):
+        return Clip(audio, "ogg", "audio/ogg")
+    return Clip(audio, "bin", "application/octet-stream")
 
 
 def _wrap_pcm_in_wav(pcm: bytes, sample_rate: int) -> bytes:

@@ -8,7 +8,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.services import voice
-from app.services.instagram import send_audio_message, send_text_message
+from app.services.instagram import get_user_profile, send_audio_message, send_text_message
 from app.services.sales_agent import generate_sales_reply, wants_human
 from app.store import memory
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
@@ -126,7 +126,9 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         logger.info("Handoff pedido por IGSID=%s; nenhuma resposta automática", sender_id)
         return
 
-    result = generate_sales_reply(sender_id, text)
+    first_name = voice.first_speakable_name(get_user_profile(sender_id))
+
+    result = generate_sales_reply(sender_id, text, first_name=first_name)
     if not result.should_send:
         print("ig_webhook no_reply sender_id=%s" % sender_id, flush=True)
         return

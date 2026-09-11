@@ -22,6 +22,30 @@ def send_audio_message(recipient_id: str, audio_url: str) -> dict[str, Any]:
     )
 
 
+def get_user_profile(igsid: str) -> dict[str, Any]:
+    """Busca nome e @ de quem mandou a DM."""
+    settings = get_settings()
+    if not settings.instagram_access_token:
+        return {}
+
+    url = (
+        f"{settings.graph_api_base_url.rstrip('/')}/"
+        f"{settings.graph_api_version}/{igsid}"
+    )
+    try:
+        with httpx.Client(timeout=15) as client:
+            response = client.get(
+                url,
+                params={"fields": "name,username"},
+                headers={"Authorization": f"Bearer {settings.instagram_access_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError:
+        logger.warning("Não consegui buscar o perfil de %s", igsid)
+        return {}
+
+
 def _send(recipient_id: str, message: dict[str, Any]) -> dict[str, Any]:
     settings = get_settings()
     if not settings.instagram_access_token or not settings.instagram_id:

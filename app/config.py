@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
     elevenlabs_sample_rate: int = 24000
+    elevenlabs_output_format: str = "mp3_44100_128"
     voice_replies_enabled: bool = True
     voice_max_chars: int = 300
     public_base_url: str = ""
