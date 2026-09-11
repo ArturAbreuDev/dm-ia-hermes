@@ -34,6 +34,25 @@ class StoryNoteRequest(BaseModel):
     id: str | None = None
 
 
+@router.get("/leads/{igsid}")
+def ver_lead(igsid: str) -> dict[str, Any]:
+    return {"igsid": igsid, "lead": memory.get_lead(igsid)}
+
+
+@router.post("/leads/{igsid}/paid")
+def marcar_pago(igsid: str) -> dict[str, Any]:
+    """Encerra a venda na mão, quando o pagamento foi confirmado por fora."""
+    memory.mark_paid(igsid)
+    return {"igsid": igsid, "lead": memory.get_lead(igsid)}
+
+
+@router.delete("/leads/{igsid}/paid")
+def desmarcar_pago(igsid: str) -> dict[str, Any]:
+    """Desfaz, para o caso de falso positivo: alguém que disse ter pago e não pagou."""
+    memory.clear_paid(igsid)
+    return {"igsid": igsid, "lead": memory.get_lead(igsid)}
+
+
 @router.get("/context")
 def list_context() -> dict[str, Any]:
     """Mostra o que a Livia sabe da própria vida hoje."""

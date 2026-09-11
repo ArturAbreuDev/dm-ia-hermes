@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
-from app.services import incoming, stories, timing, voice
+from app.services import incoming, payment, stories, timing, voice
 from app.services.instagram import (
     get_user_profile,
     send_audio_message,
@@ -128,12 +128,18 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
 
     memory.save_message(sender_id, "user", text, mid=mid)
 
+    if payment.claims_payment(text):
+        if not memory.is_paid(sender_id):
+            logger.info("IGSID=%s disse que pagou; encerrando a venda", sender_id)
+        memory.mark_paid(sender_id)
+    already_paid = memory.is_paid(sender_id)
+
     if wants_human(text):
         logger.info("Handoff pedido por IGSID=%s; nenhuma resposta automática", sender_id)
         return
 
     stories.maybe_sync()
-    as_voice = voice.is_voice_moment(text, incoming_is_audio)
+    as_voice = voice.is_voice_moment(text, incoming_is_audio, sales_open=not already_paid)
     first_name = voice.first_speakable_name(get_user_profile(sender_id))
 
     result = generate_sales_reply(
@@ -142,7 +148,8 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         first_name=first_name,
         as_voice=as_voice,
         story_reply=chegada.story_reply,
-        must_reply=chegada.is_media,
+        must_reply=chegada.is_media and not already_paid,
+        already_paid=already_paid,
     )
     if not result.should_send:
         logger.info(
@@ -153,7 +160,9 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         )
         return
 
-    will_send_audio = voice.should_use_voice(text, result.reply, incoming_is_audio)
+    will_send_audio = voice.should_use_voice(
+        text, result.reply, incoming_is_audio, sales_open=not already_paid
+    )
     plan = timing.reply_plan(result.reply, is_hot=as_voice, as_voice=will_send_audio)
     logger.info(
         "Plano IGSID=%s silencio=%.1fs digitando=%.1fs audio=%s",

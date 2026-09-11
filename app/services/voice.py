@@ -64,7 +64,9 @@ def first_speakable_name(profile: dict) -> str | None:
     return first.capitalize()
 
 
-def is_voice_moment(user_text: str, incoming_is_audio: bool) -> bool:
+def is_voice_moment(
+    user_text: str, incoming_is_audio: bool, sales_open: bool = True
+) -> bool:
     """Decide, já na chegada da mensagem, se o caso pede áudio.
 
     Saber isso antes de gerar a resposta deixa a IA escrever um texto que
@@ -73,12 +75,18 @@ def is_voice_moment(user_text: str, incoming_is_audio: bool) -> bool:
     if not get_settings().voice_ready:
         return False
     if incoming_is_audio:
+        # Quem manda áudio recebe áudio, mesmo depois de comprar.
         return True
+    if not sales_open:
+        # Venda encerrada: palavra-chave de compra não puxa mais áudio.
+        return False
     return bool(_HOT_PATTERNS.search(user_text))
 
 
-def should_use_voice(user_text: str, reply: str, incoming_is_audio: bool) -> bool:
-    if not is_voice_moment(user_text, incoming_is_audio):
+def should_use_voice(
+    user_text: str, reply: str, incoming_is_audio: bool, sales_open: bool = True
+) -> bool:
+    if not is_voice_moment(user_text, incoming_is_audio, sales_open):
         return False
     if _URL.search(reply):
         # Link em áudio é inútil: a pessoa não consegue clicar.

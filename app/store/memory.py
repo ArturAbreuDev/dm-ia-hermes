@@ -171,6 +171,43 @@ def get_history(sender_id: str, limit: int = 12) -> list[dict[str, str]]:
     return [{"role": row["role"], "text": row["text"]} for row in reversed(rows)]
 
 
+def get_lead(sender_id: str) -> dict:
+    dsn = _postgres_dsn()
+    if dsn:
+        with _postgres(dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT data FROM leads WHERE sender_id = %s", (sender_id,))
+            row = cur.fetchone()
+        if not row:
+            return {}
+        return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    with _sqlite() as conn:
+        row = conn.execute(
+            "SELECT data FROM leads WHERE sender_id = ?", (sender_id,)
+        ).fetchone()
+    return json.loads(row["data"]) if row else {}
+
+
+def mark_paid(sender_id: str) -> None:
+    """Registra que a pessoa disse ter pago. A partir daí não se vende mais nada."""
+    lead = get_lead(sender_id)
+    if lead.get("paid"):
+        return
+    lead["paid"] = True
+    lead["paid_at"] = datetime.now(timezone.utc).isoformat()
+    save_lead(sender_id, lead)
+
+
+def clear_paid(sender_id: str) -> None:
+    lead = get_lead(sender_id)
+    lead.pop("paid", None)
+    lead.pop("paid_at", None)
+    save_lead(sender_id, lead)
+
+
+def is_paid(sender_id: str) -> bool:
+    return bool(get_lead(sender_id).get("paid"))
+
+
 def save_lead(sender_id: str, data: dict) -> None:
     now = datetime.now(timezone.utc)
     payload = json.dumps(data, ensure_ascii=False)

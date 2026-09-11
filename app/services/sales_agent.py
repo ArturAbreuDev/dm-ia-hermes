@@ -49,6 +49,7 @@ def generate_sales_reply(
     as_voice: bool = False,
     story_reply: str | None = None,
     must_reply: bool = False,
+    already_paid: bool = False,
 ) -> SalesResult:
     settings = get_settings()
 
@@ -68,6 +69,7 @@ def generate_sales_reply(
                 knows_name=bool(first_name),
                 story_reply=story_reply,
                 must_reply=must_reply,
+                already_paid=already_paid,
             ),
         }
     ]
@@ -93,9 +95,22 @@ def generate_sales_reply(
     raw = (completion.choices[0].message.content or "").strip()
     reply = _clean(raw)
 
+    if already_paid:
+        # Trava de segurança: mesmo que o modelo escorregue, o link não sai de novo.
+        reply = _strip_offer(reply, settings)
+
     if not reply:
         return SalesResult(reply="", intent="no_reply")
-    return SalesResult(reply=reply[:900], intent="chat")
+    return SalesResult(
+        reply=reply[:900], intent="pos_venda" if already_paid else "chat"
+    )
+
+
+def _strip_offer(reply: str, settings) -> str:
+    sem_link = re.sub(r"https?://\S+", "", reply)
+    if settings.checkout_url:
+        sem_link = sem_link.replace(settings.checkout_url, "")
+    return re.sub(r"\s{2,}", " ", sem_link).strip(" -–—:").strip()
 
 
 def _should_use_name(first_name: str | None, history: list[dict[str, Any]]) -> bool:
@@ -134,8 +149,33 @@ def _system_prompt(
     knows_name: bool = False,
     story_reply: str | None = None,
     must_reply: bool = False,
+    already_paid: bool = False,
 ) -> str:
     checkout = settings.checkout_url or "NÃO CONFIGURADO"
+    if already_paid:
+        pos_venda = (
+            "--------------------------------------------------\n"
+            "ATENÇÃO: ESSA PESSOA JÁ COMPROU\n"
+            "--------------------------------------------------\n\n"
+            "Essa pessoa já pagou. A venda está FEITA e encerrada.\n"
+            "\n"
+            "A PARTIR DE AGORA ESTÁ PROIBIDO:\n"
+            "- mandar o link de pagamento, por qualquer motivo;\n"
+            "- falar de preço, de valor, de 10, 20 ou 30;\n"
+            "- oferecer pack, conteúdo, opção, assinatura ou qualquer upgrade;\n"
+            "- perguntar se ela quer ver as opções ou se quer que você explique;\n"
+            "- qualquer tipo de convite para comprar, mesmo disfarçado de charme.\n"
+            "Nada de \"quer ver mais?\", \"tenho outras coisas\", \"se quiser eu te mando\".\n"
+            "\n"
+            "Trate a pessoa como cliente, não como lead. Seja simpática, curta e sem pressa.\n"
+            "Se ela perguntar do conteúdo, do acesso ou disser que não recebeu, diga que é\n"
+            "só entrar no Telegram, que o acesso cai lá depois do pagamento.\n"
+            "Se ela só estiver puxando conversa, converse normalmente, sem vender nada.\n"
+            "Se não houver nada de útil para dizer, é melhor retornar "
+            f"{NO_REPLY} do que insistir."
+        )
+    else:
+        pos_venda = ""
     if must_reply:
         obrigatorio = (
             f"NESTA MENSAGEM É PROIBIDO RETORNAR {NO_REPLY}.\n"
@@ -465,6 +505,8 @@ Nunca coloque "Resposta:", "IA:", "Assistente:" ou "Mensagem sugerida:".
 Se não houver necessidade de responder, retorne exatamente {NO_REPLY}.
 
 {obrigatorio}
+
+{pos_venda}
 
 --------------------------------------------------
 CANAL DESTA RESPOSTA
