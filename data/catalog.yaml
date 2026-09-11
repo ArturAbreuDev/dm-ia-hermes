@@ -1,0 +1,28 @@
+products:
+  - id: mentoria-pro
+    name: Mentoria Pro
+    price: "R$ 497"
+    summary: Acompanhamento de 30 dias para estruturar captação e fechamento no Instagram.
+    benefits:
+      - Playbook de DMs pronto
+      - Revisão semanal
+      - Scripts de objeção
+    cta: Quero a Mentoria Pro
+  - id: pack-scripts
+    name: Pack de Scripts de Venda
+    price: "R$ 97"
+    summary: 40 roteiros de Direct para qualificar, apresentar e fechar.
+    benefits:
+      - Roteiros por intenção
+      - Exemplos de CTA
+      - Atualizações por 12 meses
+    cta: Quero o Pack de Scripts
+  - id: consultoria
+    name: Consultoria 1:1
+    price: "R$ 1.200"
+    summary: Sessão de 90 minutos para diagnosticar o funil e montar a oferta.
+    benefits:
+      - Diagnóstico comercial
+      - Oferta e precificação
+      - Próximos 14 dias de execução
+    cta: Agendar consultoria

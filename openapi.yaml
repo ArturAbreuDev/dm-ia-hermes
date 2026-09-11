@@ -1,0 +1,264 @@
+openapi: 3.1.0
+info:
+  title: Hermes — Instagram DM Sales API
+  description: Webhook da Instagram Messaging API + agente de vendas com OpenAI. A
+    spec OpenAPI fica em /openapi.json e a documentação interativa em /docs.
+  contact:
+    name: Hermes
+  version: 0.1.0
+paths:
+  /webhooks/instagram:
+    get:
+      tags:
+      - Instagram Webhook
+      summary: Verify Webhook
+      operationId: verify_webhook_webhooks_instagram_get
+      parameters:
+      - name: hub.mode
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Hub.Mode
+      - name: hub.verify_token
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Hub.Verify Token
+      - name: hub.challenge
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Hub.Challenge
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Instagram Webhook
+      summary: Receive Webhook
+      operationId: receive_webhook_webhooks_instagram_post
+      parameters:
+      - name: X-Hub-Signature-256
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Hub-Signature-256
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Receive Webhook Webhooks Instagram Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/health:
+    get:
+      tags:
+      - Hermes
+      summary: Health
+      operationId: health_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /v1/simulate:
+    post:
+      tags:
+      - Hermes
+      summary: Simulate Reply
+      description: Gera uma resposta de venda sem chamar o Instagram. Útil para testar
+        o agente.
+      operationId: simulate_reply_v1_simulate_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulateRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/messages:
+    post:
+      tags:
+      - Hermes
+      summary: Send Message
+      description: Envia um DM manual pela Instagram Messaging API.
+      operationId: send_message_v1_messages_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          default: ok
+        service:
+          type: string
+          title: Service
+          default: dm-ia-hermes
+      type: object
+      title: HealthResponse
+    SendMessageRequest:
+      properties:
+        recipient_id:
+          type: string
+          minLength: 1
+          title: Recipient Id
+        text:
+          type: string
+          maxLength: 1000
+          minLength: 1
+          title: Text
+      type: object
+      required:
+      - recipient_id
+      - text
+      title: SendMessageRequest
+    SendMessageResponse:
+      properties:
+        recipient_id:
+          type: string
+          title: Recipient Id
+        message_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message Id
+      type: object
+      required:
+      - recipient_id
+      title: SendMessageResponse
+    SimulateRequest:
+      properties:
+        sender_id:
+          type: string
+          minLength: 1
+          title: Sender Id
+          examples:
+          - igsid_demo
+        text:
+          type: string
+          minLength: 1
+          title: Text
+          examples:
+          - Quanto custa o plano Pro?
+      type: object
+      required:
+      - sender_id
+      - text
+      title: SimulateRequest
+    SimulateResponse:
+      properties:
+        reply:
+          type: string
+          title: Reply
+        handoff:
+          type: boolean
+          title: Handoff
+          default: false
+        intent:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Intent
+      type: object
+      required:
+      - reply
+      title: SimulateResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
