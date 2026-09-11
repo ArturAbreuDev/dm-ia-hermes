@@ -21,7 +21,7 @@ class Clip:
     mime: str
 
 
-def synthesize(text: str) -> Clip | None:
+def synthesize(text: str, output_format: str | None = None) -> Clip | None:
     """Gera a fala no ElevenLabs.
 
     O formato vem de ELEVENLABS_OUTPUT_FORMAT. Se for PCM, montamos o container
@@ -31,7 +31,7 @@ def synthesize(text: str) -> Clip | None:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         return None
 
-    output_format = settings.elevenlabs_output_format
+    output_format = output_format or settings.elevenlabs_output_format
     url = _API_URL.format(voice_id=settings.elevenlabs_voice_id)
     try:
         with httpx.Client(timeout=60) as client:

@@ -73,10 +73,10 @@ def should_use_voice(user_text: str, reply: str, incoming_is_audio: bool) -> boo
     return bool(_HOT_PATTERNS.search(user_text))
 
 
-def build_audio_url(text: str) -> str | None:
+def build_audio_url(text: str, output_format: str | None = None) -> str | None:
     """Gera o áudio, guarda e devolve a URL pública que o Instagram vai baixar."""
     settings = get_settings()
-    clip = elevenlabs.synthesize(_strip_for_speech(text))
+    clip = elevenlabs.synthesize(_strip_for_speech(text), output_format=output_format)
     if not clip:
         return None
     clip_id = media.save_audio(clip.data, clip.mime)

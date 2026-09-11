@@ -17,12 +17,13 @@ class VoicePreviewRequest(BaseModel):
 class VoiceSendRequest(BaseModel):
     recipient_id: str
     text: str
+    output_format: str | None = None
 
 
 @router.post("/v1/voice/send")
 def voice_send(payload: VoiceSendRequest) -> dict[str, str]:
     """Manda um áudio de teste para um IGSID que já conversou com a conta."""
-    url = voice.build_audio_url(payload.text)
+    url = voice.build_audio_url(payload.text, output_format=payload.output_format)
     if not url:
         raise HTTPException(status_code=502, detail="Não consegui gerar o áudio")
     try:
@@ -54,6 +55,5 @@ def get_audio(filename: str) -> Response:
         headers={
             "Cache-Control": "public, max-age=86400",
             "Content-Length": str(len(data)),
-            "Accept-Ranges": "bytes",
         },
     )
