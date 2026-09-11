@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -117,6 +118,37 @@ def sync_active_stories() -> list[str]:
         if description:
             descritos.append(description)
     return descritos
+
+
+_SYNC_MARKER = "_last_story_sync"
+
+
+def maybe_sync() -> None:
+    """Atualiza os stories de tempo em tempo, aproveitando o tráfego das DMs.
+
+    Cron na Vercel no plano free roda uma vez por dia, o que é pouco para story.
+    Então quem dispara é a própria chegada de mensagem, com trava de tempo para
+    não chamar a API do Instagram a cada DM.
+    """
+    settings = get_settings()
+    if not settings.story_context_enabled:
+        return
+
+    agora = datetime.now(timezone.utc)
+    ultimo = story_context.get(_SYNC_MARKER)
+    if ultimo:
+        try:
+            passou = agora - datetime.fromisoformat(ultimo)
+            if passou < timedelta(minutes=settings.story_sync_minutes):
+                return
+        except ValueError:
+            pass
+
+    story_context.save(_SYNC_MARKER, agora.isoformat(), kind="meta")
+    try:
+        sync_active_stories()
+    except Exception:
+        logger.exception("Sync de stories falhou")
 
 
 def prompt_block(replying_to: str | None = None) -> str:

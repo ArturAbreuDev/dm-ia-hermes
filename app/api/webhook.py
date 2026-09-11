@@ -153,6 +153,7 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         logger.info("Handoff pedido por IGSID=%s; nenhuma resposta automática", sender_id)
         return
 
+    stories.maybe_sync()
     as_voice = voice.is_voice_moment(text, incoming_is_audio)
     first_name = voice.first_speakable_name(get_user_profile(sender_id))
     story_reply = _describe_replied_story(message)

@@ -84,6 +84,7 @@ def recent(limit: int = 12) -> list[dict[str, str]]:
                 """
                 SELECT description, kind, created_at
                 FROM story_context
+                WHERE kind <> 'meta'
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
@@ -97,6 +98,7 @@ def recent(limit: int = 12) -> list[dict[str, str]]:
                 """
                 SELECT description, kind, created_at
                 FROM story_context
+                WHERE kind <> 'meta'
                 ORDER BY created_at DESC
                 LIMIT ?
                 """,
