@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4.1-mini"
     openai_base_url: str = "https://api.openai.com/v1"
     openai_temperature: float = 0.9
+    transcribe_model: str = "whisper-1"
 
     telegram_bot_token: str = ""
     telegram_default_chat_id: str = ""

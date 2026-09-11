@@ -48,6 +48,7 @@ def generate_sales_reply(
     first_name: str | None = None,
     as_voice: bool = False,
     story_reply: str | None = None,
+    must_reply: bool = False,
 ) -> SalesResult:
     settings = get_settings()
 
@@ -66,6 +67,7 @@ def generate_sales_reply(
                 as_voice,
                 knows_name=bool(first_name),
                 story_reply=story_reply,
+                must_reply=must_reply,
             ),
         }
     ]
@@ -131,8 +133,24 @@ def _system_prompt(
     as_voice: bool = False,
     knows_name: bool = False,
     story_reply: str | None = None,
+    must_reply: bool = False,
 ) -> str:
     checkout = settings.checkout_url or "NÃO CONFIGURADO"
+    if must_reply:
+        obrigatorio = (
+            f"NESTA MENSAGEM É PROIBIDO RETORNAR {NO_REPLY}.\n"
+            "A pessoa mandou um áudio, uma foto, um vídeo ou te marcou no story dela. Isso é\n"
+            "uma pessoa real interagindo com você e merece resposta sempre.\n"
+            "Você vai receber essa mídia descrita entre colchetes, tipo\n"
+            "[a pessoa mandou um áudio dizendo] \"...\". Os colchetes são a sua percepção, não\n"
+            "parte da conversa: responda ao conteúdo e NUNCA cite os colchetes, nem diga que\n"
+            "recebeu uma descrição, nem comente que é um áudio ou uma foto como se fosse\n"
+            "estranho. Reaja como alguém que acabou de ouvir ou ver aquilo.\n"
+            "Se a descrição disser que você não conseguiu ouvir o áudio, aí sim peça para a\n"
+            "pessoa repetir, de forma leve."
+        )
+    else:
+        obrigatorio = ""
     contexto_stories = stories.prompt_block(replying_to=story_reply)
     if contexto_stories:
         contexto_stories = (
@@ -445,6 +463,8 @@ Nunca explique o motivo da resposta.
 Nunca coloque "Resposta:", "IA:", "Assistente:" ou "Mensagem sugerida:".
 
 Se não houver necessidade de responder, retorne exatamente {NO_REPLY}.
+
+{obrigatorio}
 
 --------------------------------------------------
 CANAL DESTA RESPOSTA

@@ -7,8 +7,10 @@ import logging
 import time
 from typing import Any
 
+import httpx
+
 from app.config import get_settings
-from app.services import stories, timing, voice
+from app.services import incoming, stories, timing, voice
 from app.services.instagram import (
     get_user_profile,
     send_audio_message,
@@ -94,27 +96,6 @@ def process_instagram_event(payload: dict[str, Any]) -> None:
         logger.exception("Falha ao processar evento do Instagram")
 
 
-def _describe_replied_story(message: dict[str, Any]) -> str | None:
-    """Descobre a que story a pessoa está respondendo.
-
-    A URL da mídia é de CDN e expira, então a descrição tem que ser feita agora,
-    no momento em que a mensagem chega.
-    """
-    story = ((message.get("reply_to") or {}).get("story")) or {}
-    story_id, media_url = story.get("id"), story.get("url")
-    if not story_id or not media_url:
-        return None
-
-    try:
-        description = stories.describe_story(story_id, media_url)
-    except Exception:
-        logger.exception("Falha ao descrever o story respondido")
-        return None
-
-    logger.info("Resposta ao story %s: %s", story_id, description)
-    return description
-
-
 def _handle_messaging_event(event: dict[str, Any]) -> None:
     message = event.get("message") or {}
     sender_id = (event.get("sender") or {}).get("id")
@@ -124,28 +105,26 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         flush=True,
     )
     if not sender_id or not message:
+        logger.info("Ignorado: evento sem remetente ou sem mensagem")
         return
-    if message.get("is_echo") or message.get("is_deleted") or message.get("is_unsupported"):
-        return
+    for bandeira in ("is_echo", "is_deleted", "is_unsupported"):
+        if message.get(bandeira):
+            logger.info("Ignorado IGSID=%s: mensagem marcada como %s", sender_id, bandeira)
+            return
     settings = get_settings()
     if sender_id in {settings.instagram_id, settings.instagram_page_id, settings.instagram_user_id}:
+        logger.info("Ignorado: a mensagem é da própria conta")
         return
 
     mid = message.get("mid")
     if memory.already_processed(mid):
+        logger.info("Ignorado IGSID=%s: mid %s já processado", sender_id, mid)
         return
 
-    attachment_types = {
-        (item or {}).get("type") for item in (message.get("attachments") or [])
-    }
-    incoming_is_audio = "audio" in attachment_types
-
-    text = (message.get("text") or "").strip()
-    if not text:
-        if incoming_is_audio:
-            text = "[a pessoa mandou um áudio]"
-        else:
-            text = "[mensagem sem texto: mídia, sticker ou compartilhamento]"
+    chegada = incoming.read(message)
+    text = chegada.text
+    incoming_is_audio = chegada.is_audio
+    logger.info("Recebido IGSID=%s tipo=%s texto=%r", sender_id, chegada.kind, text[:160])
 
     memory.save_message(sender_id, "user", text, mid=mid)
 
@@ -156,17 +135,22 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     stories.maybe_sync()
     as_voice = voice.is_voice_moment(text, incoming_is_audio)
     first_name = voice.first_speakable_name(get_user_profile(sender_id))
-    story_reply = _describe_replied_story(message)
 
     result = generate_sales_reply(
         sender_id,
         text,
         first_name=first_name,
         as_voice=as_voice,
-        story_reply=story_reply,
+        story_reply=chegada.story_reply,
+        must_reply=chegada.is_media,
     )
     if not result.should_send:
-        print("ig_webhook no_reply sender_id=%s" % sender_id, flush=True)
+        logger.info(
+            "Sem resposta para IGSID=%s intent=%s tipo=%s",
+            sender_id,
+            result.intent,
+            chegada.kind,
+        )
         return
 
     will_send_audio = voice.should_use_voice(text, result.reply, incoming_is_audio)
@@ -204,7 +188,14 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
             logger.exception("Falha ao enviar áudio; caindo para texto")
 
     if not sent_as_audio:
-        send_text_message(sender_id, result.reply)
+        try:
+            send_text_message(sender_id, result.reply)
+        except httpx.HTTPStatusError as extra:
+            # Conta apagada, desativada ou que bloqueou o perfil: não há o que fazer.
+            logger.warning(
+                "Não consegui entregar para IGSID=%s: %s", sender_id, extra.response.text
+            )
+            return
 
     send_sender_action(sender_id, "typing_off")
     memory.save_message(sender_id, "assistant", result.reply)

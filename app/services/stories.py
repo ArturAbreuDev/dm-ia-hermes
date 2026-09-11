@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import base64
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from openai import OpenAI, OpenAIError
 
 from app.config import get_settings
+from app.services import vision
 from app.store import story_context
 
 logger = logging.getLogger(__name__)
@@ -38,42 +37,7 @@ def describe_story(story_id: str, media_url: str) -> str | None:
     if not settings.openai_api_key or not settings.story_context_enabled:
         return None
 
-    try:
-        with httpx.Client(timeout=30, follow_redirects=True) as client:
-            response = client.get(media_url)
-            response.raise_for_status()
-            media = response.content
-            mime = response.headers.get("content-type", "image/jpeg").split(";")[0]
-    except httpx.HTTPError:
-        logger.warning("Não consegui baixar o story %s", story_id)
-        return None
-
-    if not mime.startswith("image/"):
-        # Vídeo não dá para mandar para o modelo de visão; fica sem descrição.
-        logger.info("Story %s é %s, não descrevi", story_id, mime)
-        return None
-
-    data_url = f"data:{mime};base64,{base64.b64encode(media).decode()}"
-    try:
-        client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
-        completion = client.chat.completions.create(
-            model=settings.openai_model,
-            max_tokens=90,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": _DESCRIBE_PROMPT},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ],
-                }
-            ],
-        )
-        description = (completion.choices[0].message.content or "").strip()
-    except OpenAIError:
-        logger.exception("Falha ao descrever o story %s", story_id)
-        return None
-
+    description = vision.describe(media_url, _DESCRIBE_PROMPT)
     if not description:
         return None
     story_context.save(story_id, description, kind="story")
