@@ -32,15 +32,18 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
     openai_base_url: str = "https://api.openai.com/v1"
+    openai_temperature: float = 0.9
 
     telegram_bot_token: str = ""
     telegram_default_chat_id: str = ""
 
-    business_name: str = "Hermes"
-    business_tone: str = "consultivo, direto e brasileiro"
+    business_name: str = "Livia Gomes"
+    business_tone: str = "feminina, confiante, provocante de maneira sutil"
     checkout_url: str = ""
     whatsapp_url: str = ""
-    handoff_keywords: str = "humano,atendente,pessoa"
+    telegram_sales_url: str = ""
+    handoff_keywords: str = ""
+    history_limit: int = 30
 
     catalog_path: Path = ROOT_DIR / "data" / "catalog.yaml"
     playbook_path: Path = ROOT_DIR / "data" / "playbook.yaml"

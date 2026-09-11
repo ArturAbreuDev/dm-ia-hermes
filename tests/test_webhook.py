@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.main import app
-from app.services.sales_agent import _fallback_reply, wants_human
+from app.services.sales_agent import _clean, wants_human
 
 get_settings.cache_clear()
 client = TestClient(app)
@@ -79,24 +79,17 @@ def test_webhook_accepts_valid_signature() -> None:
     assert response.json()["status"] == "accepted"
 
 
-def test_fallback_sales_reply_uses_catalog() -> None:
-    catalog = {
-        "products": [
-            {
-                "name": "Mentoria Pro",
-                "price": "R$ 497",
-                "summary": "Acompanhamento de 30 dias.",
-            }
-        ]
-    }
-    reply = _fallback_reply("Quanto custa a mentoria?", catalog)
-    assert "R$ 497" in reply
-    assert "Mentoria Pro" in reply
+def test_no_reply_marker_silences_the_bot() -> None:
+    assert _clean("[NO_REPLY]") == ""
 
 
-def test_wants_human() -> None:
+def test_clean_strips_prefix_and_quotes() -> None:
+    assert _clean('Resposta: "kkkk que foi? 😂"') == "kkkk que foi? 😂"
+
+
+def test_wants_human_is_off_without_keywords() -> None:
     get_settings.cache_clear()
-    assert wants_human("quero falar com um atendente")
+    assert not wants_human("quero falar com um atendente")
 
 
 def test_telegram_requires_token(monkeypatch) -> None:

@@ -114,17 +114,14 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     memory.save_message(sender_id, "user", text, mid=mid)
 
     if wants_human(text):
-        reply = (
-            "Vou te passar para um atendente humano. "
-            "Enquanto isso, se quiser, já me conta o que você procura."
-        )
-        send_text_message(sender_id, reply)
-        memory.save_message(sender_id, "assistant", reply)
+        logger.info("Handoff pedido por IGSID=%s; nenhuma resposta automática", sender_id)
         return
 
     result = generate_sales_reply(sender_id, text)
+    if not result.should_send:
+        print("ig_webhook no_reply sender_id=%s" % sender_id, flush=True)
+        return
+
     send_text_message(sender_id, result.reply)
     memory.save_message(sender_id, "assistant", result.reply)
-    if result.lead:
-        memory.save_lead(sender_id, result.lead)
-    logger.info("Respondido IGSID=%s intent=%s handoff=%s", sender_id, result.intent, result.handoff)
+    logger.info("Respondido IGSID=%s intent=%s", sender_id, result.intent)
