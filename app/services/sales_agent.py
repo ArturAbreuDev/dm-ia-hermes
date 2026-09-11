@@ -9,6 +9,7 @@ from typing import Any
 from openai import OpenAI, OpenAIError
 
 from app.config import get_settings
+from app.services import stories
 from app.store import memory
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ def generate_sales_reply(
     user_text: str,
     first_name: str | None = None,
     as_voice: bool = False,
+    story_reply: str | None = None,
 ) -> SalesResult:
     settings = get_settings()
 
@@ -63,6 +65,7 @@ def generate_sales_reply(
                 first_name if use_name else None,
                 as_voice,
                 knows_name=bool(first_name),
+                story_reply=story_reply,
             ),
         }
     ]
@@ -127,8 +130,21 @@ def _system_prompt(
     first_name: str | None = None,
     as_voice: bool = False,
     knows_name: bool = False,
+    story_reply: str | None = None,
 ) -> str:
     checkout = settings.checkout_url or "NÃO CONFIGURADO"
+    contexto_stories = stories.prompt_block(replying_to=story_reply)
+    if contexto_stories:
+        contexto_stories = (
+            "--------------------------------------------------\n"
+            "O QUE VOCÊ ANDOU POSTANDO\n"
+            "--------------------------------------------------\n\n"
+            f"{contexto_stories}\n\n"
+            "Isso é a sua própria vida. Se a pessoa comentar algo que está nessa lista, responda\n"
+            "como quem viveu aquilo, sem estranhar e sem perguntar do que ela está falando.\n"
+            "Essas linhas são a sua memória, escritas em anotação curta. Nunca responda copiando\n"
+            "uma delas: conte com as suas palavras, como se estivesse lembrando na hora.\n"
+        )
     if first_name:
         nome = (
             f"Nesta resposta específica você PODE chamar a pessoa de {first_name}, uma vez só.\n"
@@ -215,6 +231,8 @@ ESTILO:
 
 NOME DA PESSOA:
 {nome}
+
+{contexto_stories}
 
 COMO USAR OS EXEMPLOS ABAIXO:
 Os exemplos servem apenas como referência de tom e tamanho. Nunca copie um exemplo palavra por
@@ -362,6 +380,19 @@ REGRAS IMPORTANTES
 --------------------------------------------------
 
 1. Nunca invente informações sobre a Livia.
+1.1. Se a pessoa comentar um fato da vida dela (um lugar, um evento, uma viagem, um story),
+primeiro procure esse fato na seção "O QUE VOCÊ ANDOU POSTANDO".
+Se estiver lá, ASSUMA como sua e responda como quem viveu aquilo, puxando o assunto para
+frente. Nunca copie a descrição palavra por palavra: ela é a sua memória, não um texto pronto.
+Fale como você contaria para alguém, com as suas palavras e sem listar tudo o que aconteceu.
+Se NÃO estiver lá, você não confirma NEM nega. Não diga "fui sim" nem "não fui", porque você
+não tem como saber: nos dois casos você estaria inventando. Negar é o pior dos dois, porque
+entrega que você é um robô e faz a pessoa achar que confundiu de perfil.
+O certo é devolver com curiosidade e deixar ela contar, sem nunca confirmar o fato e sem
+repetir sempre a mesma frase. Uma pergunta curta por mensagem, não duas.
+Usuário: "te vi ontem no shopping" -> "serioo? e você não veio falar comigo kkk"
+Usuário: "vi seu story de ontem" -> "ahh e o que você achou? 👀"
+Usuário: "você foi naquele show né?" -> "por que, me viu por lá? 👀"
 2. Nunca invente preços.
 3. Nunca invente links.
 4. Nunca invente promoções.

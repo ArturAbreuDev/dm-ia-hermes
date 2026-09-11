@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import uuid
+from typing import Any
+
 from app.config import get_settings
 from app.models.schemas import (
     HealthResponse,
@@ -13,9 +16,10 @@ from app.models.schemas import (
 )
 from app.services.instagram import send_text_message
 from app.services.sales_agent import generate_sales_reply
-from app.services import telegram
-from app.store import memory
+from app.services import stories, telegram
+from app.store import memory, story_context
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 router = APIRouter(tags=["Hermes"])
 
@@ -23,6 +27,39 @@ router = APIRouter(tags=["Hermes"])
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse()
+
+
+class StoryNoteRequest(BaseModel):
+    text: str
+    id: str | None = None
+
+
+@router.get("/context")
+def list_context() -> dict[str, Any]:
+    """Mostra o que a Livia sabe da própria vida hoje."""
+    return {"itens": story_context.recent(limit=20)}
+
+
+@router.post("/context/notes")
+def add_context_note(payload: StoryNoteRequest) -> dict[str, Any]:
+    """Anota um acontecimento na mão, para quando não vier de um story.
+
+    Serve para o que a API não entrega: story que já expirou, story postado na
+    conta principal, ou qualquer coisa que ela deveria saber sobre si mesma.
+    """
+    texto = payload.text.strip()
+    if not texto:
+        raise HTTPException(status_code=400, detail="Texto vazio")
+    entry_id = payload.id or f"nota-{uuid.uuid4().hex[:12]}"
+    story_context.save(entry_id, texto, kind="nota")
+    return {"id": entry_id, "description": texto}
+
+
+@router.post("/context/sync-stories")
+def sync_stories() -> dict[str, Any]:
+    """Lê os stories ativos da conta conectada e descreve os novos."""
+    descritos = stories.sync_active_stories()
+    return {"descritos": descritos, "total": len(descritos)}
 
 
 @router.post("/simulate", response_model=SimulateResponse)

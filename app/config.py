@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     reply_delay_enabled: bool = True
     reply_delay_max_seconds: float = 120.0
 
+    story_context_enabled: bool = True
+
     business_name: str = "Livia Gomes"
     business_tone: str = "feminina, confiante, provocante de maneira sutil"
     checkout_url: str = ""
