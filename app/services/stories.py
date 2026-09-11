@@ -84,12 +84,13 @@ def describe_story(story_id: str, media_url: str) -> str | None:
 def sync_active_stories() -> list[str]:
     """Lê os stories ativos da conta e descreve os que ainda não conhecemos."""
     settings = get_settings()
-    if not settings.story_context_enabled or not settings.instagram_access_token:
+    account_id, token = settings.stories_account
+    if not settings.story_context_enabled or not token or not account_id:
         return []
 
     url = (
         f"{settings.graph_api_base_url.rstrip('/')}/"
-        f"{settings.graph_api_version}/{settings.instagram_id}/stories"
+        f"{settings.graph_api_version}/{account_id}/stories"
     )
     try:
         with httpx.Client(timeout=30) as client:
@@ -97,7 +98,7 @@ def sync_active_stories() -> list[str]:
                 url,
                 params={
                     "fields": "id,media_type,media_url,thumbnail_url,timestamp",
-                    "access_token": settings.instagram_access_token,
+                    "access_token": token,
                 },
             )
             response.raise_for_status()

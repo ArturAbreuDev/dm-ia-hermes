@@ -56,6 +56,11 @@ class Settings(BaseSettings):
 
     story_context_enabled: bool = True
     story_sync_minutes: int = 30
+    # A conta que posta os stories do dia a dia pode ser outra, diferente da que
+    # recebe as DMs. Se estes campos ficarem vazios, usamos a própria conta do bot.
+    stories_instagram_user_id: str = ""
+    stories_instagram_access_token: str = ""
+    diary_password: str = ""
 
     business_name: str = "Livia Gomes"
     business_tone: str = "feminina, confiante, provocante de maneira sutil"
@@ -96,6 +101,13 @@ class Settings(BaseSettings):
             return self.public_base_url.rstrip("/")
         host = os.getenv("VERCEL_PROJECT_PRODUCTION_URL") or os.getenv("VERCEL_URL")
         return f"https://{host}" if host else ""
+
+    @property
+    def stories_account(self) -> tuple[str, str]:
+        """De qual conta ler os stories: a dedicada, se houver, senão a do bot."""
+        if self.stories_instagram_user_id and self.stories_instagram_access_token:
+            return self.stories_instagram_user_id, self.stories_instagram_access_token
+        return self.instagram_id, self.instagram_access_token
 
     @property
     def voice_ready(self) -> bool:

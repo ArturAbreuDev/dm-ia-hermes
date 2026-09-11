@@ -73,6 +73,18 @@ def get(entry_id: str) -> str | None:
     return row["description"] if row else None
 
 
+def delete(entry_id: str) -> None:
+    dsn = _postgres_dsn()
+    if dsn:
+        with _postgres(dsn) as conn, conn.cursor() as cur:
+            cur.execute(_PG)
+            cur.execute("DELETE FROM story_context WHERE id = %s", (entry_id,))
+        return
+    with _sqlite() as conn:
+        conn.execute(_SQLITE)
+        conn.execute("DELETE FROM story_context WHERE id = ?", (entry_id,))
+
+
 def recent(limit: int = 12) -> list[dict[str, str]]:
     """Do mais recente para o mais antigo, com quantos dias tem cada um."""
     agora = datetime.now(timezone.utc)
@@ -82,7 +94,7 @@ def recent(limit: int = 12) -> list[dict[str, str]]:
             cur.execute(_PG)
             cur.execute(
                 """
-                SELECT description, kind, created_at
+                SELECT id, description, kind, created_at
                 FROM story_context
                 WHERE kind <> 'meta'
                 ORDER BY created_at DESC
@@ -90,13 +102,13 @@ def recent(limit: int = 12) -> list[dict[str, str]]:
                 """,
                 (limit,),
             )
-            rows = [(row[0], row[1], row[2]) for row in cur.fetchall()]
+            rows = [(row[0], row[1], row[2], row[3]) for row in cur.fetchall()]
     else:
         with _sqlite() as conn:
             conn.execute(_SQLITE)
             raw = conn.execute(
                 """
-                SELECT description, kind, created_at
+                SELECT id, description, kind, created_at
                 FROM story_context
                 WHERE kind <> 'meta'
                 ORDER BY created_at DESC
@@ -105,16 +117,28 @@ def recent(limit: int = 12) -> list[dict[str, str]]:
                 (limit,),
             ).fetchall()
         rows = [
-            (item["description"], item["kind"], datetime.fromisoformat(item["created_at"]))
+            (
+                item["id"],
+                item["description"],
+                item["kind"],
+                datetime.fromisoformat(item["created_at"]),
+            )
             for item in raw
         ]
 
     saida = []
-    for description, kind, created_at in rows:
+    for entry_id, description, kind, created_at in rows:
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
         dias = (agora - created_at).days
-        saida.append({"description": description, "kind": kind, "quando": _quando(dias)})
+        saida.append(
+            {
+                "id": entry_id,
+                "description": description,
+                "kind": kind,
+                "quando": _quando(dias),
+            }
+        )
     return saida
 
 

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.admin import router as admin_router
+from app.api.diary import router as diary_router
 from app.api.legal import router as legal_router
 from app.api.media import router as media_router
 from app.api.webhook import router as webhook_router
@@ -20,3 +21,4 @@ app.include_router(webhook_router, prefix="/webhooks/instagram")
 app.include_router(admin_router, prefix="/v1")
 app.include_router(legal_router)
 app.include_router(media_router)
+app.include_router(diary_router)
