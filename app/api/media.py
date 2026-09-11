@@ -42,6 +42,7 @@ def voice_preview(payload: VoicePreviewRequest) -> dict[str, str]:
     return {"audio_url": url}
 
 
+@router.head("/media/audio/{filename}")
 @router.get("/media/audio/{filename}")
 def get_audio(filename: str) -> Response:
     clip_id = filename.rsplit(".", 1)[0]
