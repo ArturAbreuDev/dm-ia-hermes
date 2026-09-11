@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
 
 from app.api.admin import router as admin_router
 from app.api.legal import router as legal_router
@@ -19,8 +18,3 @@ app.include_router(webhook_router, prefix="/api/instagram/webhook")
 app.include_router(webhook_router, prefix="/webhooks/instagram")
 app.include_router(admin_router, prefix="/v1")
 app.include_router(legal_router)
-
-
-@app.get("/", include_in_schema=False)
-def root() -> RedirectResponse:
-    return RedirectResponse(url="/docs")

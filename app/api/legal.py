@@ -6,6 +6,8 @@ from fastapi.responses import HTMLResponse
 router = APIRouter(include_in_schema=False)
 
 _CONTACT_EMAIL = "arturdamaceno.dev@gmail.com"
+_BUSINESS_NAME = "Artur Damaceno"
+_BUSINESS_PHONE = "+55 51 99913-0114"
 
 _PAGE = """<!doctype html>
 <html lang="pt-br">
@@ -76,6 +78,33 @@ disponibilidade e condições devem ser confirmadas com o atendimento humano.</p
 <h2>Alterações</h2>
 <p>Estes termos podem ser atualizados. A versão vigente é sempre a publicada nesta página.</p>
 """
+
+
+@router.get("/", response_class=HTMLResponse)
+def landing() -> str:
+    body = f"""
+<h1>{_BUSINESS_NAME}</h1>
+<p>Atendimento automatizado para contas profissionais do Instagram. O Hermes responde as mensagens
+diretas recebidas na conta, apresenta os produtos e serviços do catálogo e encaminha o contato para
+atendimento humano quando a pessoa pede.</p>
+
+<h2>O que fazemos</h2>
+<ul>
+  <li>Resposta automática a mensagens diretas do Instagram.</li>
+  <li>Apresentação de catálogo, preços e condições.</li>
+  <li>Encaminhamento do contato para atendimento humano.</li>
+</ul>
+
+<h2>Contato</h2>
+<p>E-mail: <a href="mailto:{_CONTACT_EMAIL}">{_CONTACT_EMAIL}</a><br>
+Telefone: {_BUSINESS_PHONE}</p>
+
+<h2>Documentos</h2>
+<p><a href="/privacy">Política de Privacidade</a> &middot;
+<a href="/terms">Termos de Serviço</a> &middot;
+<a href="/data-deletion">Exclusão de dados</a></p>
+"""
+    return _PAGE.format(title=_BUSINESS_NAME, body=body, email=_CONTACT_EMAIL)
 
 
 @router.get("/privacy", response_class=HTMLResponse)
