@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_default_chat_id: str = ""
 
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"
+    elevenlabs_sample_rate: int = 24000
+    voice_replies_enabled: bool = True
+    voice_max_chars: int = 300
+    public_base_url: str = ""
+
     business_name: str = "Livia Gomes"
     business_tone: str = "feminina, confiante, provocante de maneira sutil"
     checkout_url: str = ""
@@ -68,6 +76,22 @@ class Settings(BaseSettings):
         return (
             f"{self.graph_api_base_url.rstrip('/')}/"
             f"{self.graph_api_version}/{self.instagram_id}/messages"
+        )
+
+    @property
+    def base_url(self) -> str:
+        if self.public_base_url:
+            return self.public_base_url.rstrip("/")
+        host = os.getenv("VERCEL_PROJECT_PRODUCTION_URL") or os.getenv("VERCEL_URL")
+        return f"https://{host}" if host else ""
+
+    @property
+    def voice_ready(self) -> bool:
+        return bool(
+            self.voice_replies_enabled
+            and self.elevenlabs_api_key
+            and self.elevenlabs_voice_id
+            and self.base_url
         )
 
     @property

@@ -11,15 +11,27 @@ logger = logging.getLogger(__name__)
 
 
 def send_text_message(recipient_id: str, text: str) -> dict[str, Any]:
+    return _send(recipient_id, {"text": text[:1000]})
+
+
+def send_audio_message(recipient_id: str, audio_url: str) -> dict[str, Any]:
+    """Envia um áudio. O Instagram baixa o arquivo da URL informada."""
+    return _send(
+        recipient_id,
+        {"attachment": {"type": "audio", "payload": {"url": audio_url}}},
+    )
+
+
+def _send(recipient_id: str, message: dict[str, Any]) -> dict[str, Any]:
     settings = get_settings()
     if not settings.instagram_access_token or not settings.instagram_id:
         raise RuntimeError("INSTAGRAM_USER_ID e INSTAGRAM_ACCESS_TOKEN são obrigatórios")
 
     payload = {
         "recipient": {"id": recipient_id},
-        "message": {"text": text[:1000]},
+        "message": message,
     }
-    with httpx.Client(timeout=20) as client:
+    with httpx.Client(timeout=30) as client:
         response = client.post(
             settings.graph_messages_url,
             params={"access_token": settings.instagram_access_token},

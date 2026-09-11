@@ -7,7 +7,8 @@ import logging
 from typing import Any
 
 from app.config import get_settings
-from app.services.instagram import send_text_message
+from app.services import voice
+from app.services.instagram import send_audio_message, send_text_message
 from app.services.sales_agent import generate_sales_reply, wants_human
 from app.store import memory
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
@@ -107,9 +108,17 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     if memory.already_processed(mid):
         return
 
+    attachment_types = {
+        (item or {}).get("type") for item in (message.get("attachments") or [])
+    }
+    incoming_is_audio = "audio" in attachment_types
+
     text = (message.get("text") or "").strip()
     if not text:
-        text = "[mensagem sem texto: mídia, sticker ou compartilhamento]"
+        if incoming_is_audio:
+            text = "[a pessoa mandou um áudio]"
+        else:
+            text = "[mensagem sem texto: mídia, sticker ou compartilhamento]"
 
     memory.save_message(sender_id, "user", text, mid=mid)
 
@@ -122,6 +131,18 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         print("ig_webhook no_reply sender_id=%s" % sender_id, flush=True)
         return
 
-    send_text_message(sender_id, result.reply)
+    sent_as_audio = False
+    if voice.should_use_voice(text, result.reply, incoming_is_audio):
+        audio_url = voice.build_audio_url(result.reply)
+        if audio_url:
+            try:
+                send_audio_message(sender_id, audio_url)
+                sent_as_audio = True
+            except Exception:
+                logger.exception("Falha ao enviar áudio; caindo para texto")
+
+    if not sent_as_audio:
+        send_text_message(sender_id, result.reply)
+
     memory.save_message(sender_id, "assistant", result.reply)
-    logger.info("Respondido IGSID=%s intent=%s", sender_id, result.intent)
+    logger.info("Respondido IGSID=%s intent=%s audio=%s", sender_id, result.intent, sent_as_audio)
