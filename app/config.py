@@ -39,12 +39,20 @@ class Settings(BaseSettings):
 
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
-    elevenlabs_model: str = "eleven_multilingual_v2"
+    elevenlabs_model: str = "eleven_v3"
     elevenlabs_sample_rate: int = 24000
-    elevenlabs_output_format: str = "mp3_44100_128"
+    # O Instagram recusa mp3; pcm vira wav, que ele aceita.
+    elevenlabs_output_format: str = "pcm_24000"
+    # No v3 a estabilidade só aceita 0.0 (criativo), 0.5 (natural) ou 1.0 (robusto).
+    elevenlabs_stability: float = 0.5
     voice_replies_enabled: bool = True
     voice_max_chars: int = 300
+    voice_director_enabled: bool = True
+    voice_director_model: str = ""
     public_base_url: str = ""
+
+    reply_delay_enabled: bool = True
+    reply_delay_max_seconds: float = 120.0
 
     business_name: str = "Livia Gomes"
     business_tone: str = "feminina, confiante, provocante de maneira sutil"

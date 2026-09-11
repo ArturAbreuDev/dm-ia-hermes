@@ -42,7 +42,14 @@ def synthesize(text: str, output_format: str | None = None) -> Clip | None:
                     "xi-api-key": settings.elevenlabs_api_key,
                     "Content-Type": "application/json",
                 },
-                json={"text": text, "model_id": settings.elevenlabs_model},
+                json={
+                    "text": text,
+                    "model_id": settings.elevenlabs_model,
+                    "voice_settings": {
+                        "stability": settings.elevenlabs_stability,
+                        "use_speaker_boost": True,
+                    },
+                },
             )
             response.raise_for_status()
             audio = response.content

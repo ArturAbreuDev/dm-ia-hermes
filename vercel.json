@@ -3,7 +3,7 @@
   "framework": "fastapi",
   "functions": {
     "app/main.py": {
-      "maxDuration": 30
+      "maxDuration": 300
     }
   }
 }

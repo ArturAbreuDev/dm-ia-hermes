@@ -4,10 +4,11 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from typing import Any
 
 from app.config import get_settings
-from app.services import voice
+from app.services import timing, voice
 from app.services.instagram import get_user_profile, send_audio_message, send_text_message
 from app.services.sales_agent import generate_sales_reply, wants_human
 from app.store import memory
@@ -135,6 +136,11 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     if not result.should_send:
         print("ig_webhook no_reply sender_id=%s" % sender_id, flush=True)
         return
+
+    espera = timing.reply_delay_seconds(result.reply, is_hot=as_voice)
+    if espera:
+        logger.info("Esperando %.1fs antes de responder IGSID=%s", espera, sender_id)
+        time.sleep(espera)
 
     sent_as_audio = False
     if voice.should_use_voice(text, result.reply, incoming_is_audio):

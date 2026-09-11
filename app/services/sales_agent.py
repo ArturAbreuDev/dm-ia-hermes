@@ -124,6 +124,16 @@ def _system_prompt(
             f"{abertura}"
             "Proibido nesta resposta: emoji, 'kkkk', abreviação, link, @ e #.\n"
             "No máximo duas frases curtas, como um áudio rápido de Instagram.\n"
+            "\n"
+            "A pontuação é o que define como você soa, então use com intenção:\n"
+            "- vírgula onde você tomaria fôlego;\n"
+            "- reticências para hesitar ou provocar, tipo \"tenho sim... mas depende\";\n"
+            "- ponto de interrogação para a frase subir no fim;\n"
+            "- ponto final no fim da última frase, sempre;\n"
+            "- nada de ponto de exclamação em sequência nem CAIXA ALTA.\n"
+            "Escreva com acento e com a primeira letra maiúscula, porque texto sem acento\n"
+            "sai com a pronúncia errada.\n"
+            "\n"
             "O resto da sua personalidade e das suas regras continua valendo."
         )
     else:

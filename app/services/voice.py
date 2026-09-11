@@ -5,7 +5,7 @@ import re
 import unicodedata
 
 from app.config import get_settings
-from app.services import elevenlabs
+from app.services import elevenlabs, voice_director
 from app.store import media
 
 logger = logging.getLogger(__name__)
@@ -88,15 +88,59 @@ def should_use_voice(user_text: str, reply: str, incoming_is_audio: bool) -> boo
 def build_audio_url(text: str, output_format: str | None = None) -> str | None:
     """Gera o áudio, guarda e devolve a URL pública que o Instagram vai baixar."""
     settings = get_settings()
-    clip = elevenlabs.synthesize(_strip_for_speech(text), output_format=output_format)
+    spoken = voice_director.direct_for_speech(_strip_for_speech(text))
+    clip = elevenlabs.synthesize(spoken, output_format=output_format)
     if not clip:
         return None
     clip_id = media.save_audio(clip.data, clip.mime)
     return f"{settings.base_url}/media/audio/{clip_id}.{clip.extension}"
 
 
+_EMOJI = re.compile(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
+_LAUGH = re.compile(r"\b(?:k{3,}|h{3,}|(?:ha){2,}h?|rs{2,})\b", re.IGNORECASE)
+_ABBREVIATIONS = {
+    r"\bvc\b": "você",
+    r"\bvcs\b": "vocês",
+    r"\btb\b": "também",
+    r"\btbm\b": "também",
+    r"\bpq\b": "porque",
+    r"\bq\b": "que",
+    r"\bmt\b": "muito",
+    r"\bmto\b": "muito",
+    r"\bmsm\b": "mesmo",
+    r"\bblz\b": "beleza",
+    r"\bobg\b": "obrigada",
+    r"\bhj\b": "hoje",
+    r"\bta\b": "tá",
+    r"\bcmg\b": "comigo",
+    r"R\$\s*": "",
+}
+
+
 def _strip_for_speech(text: str) -> str:
-    """Tira o que não se fala em voz alta: emoji e risada digitada."""
-    without_emoji = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]", "", text)
-    spoken = re.sub(r"\bk{3,}\b", "hahaha", without_emoji, flags=re.IGNORECASE)
+    """Prepara o texto para ser falado.
+
+    O v3 lê a pontuação como direção de atuação: vírgula é respiro, reticência é
+    hesitação, interrogação levanta a voz. Então vale mais ajustar a pontuação do
+    que mexer nos parâmetros da voz.
+    """
+    spoken = _EMOJI.sub("", text)
+    spoken = _LAUGH.sub("[laughs]", spoken)
+
+    for pattern, replacement in _ABBREVIATIONS.items():
+        spoken = re.sub(pattern, replacement, spoken, flags=re.IGNORECASE)
+
+    spoken = re.sub(r"\s+", " ", spoken).strip()
+    if not spoken:
+        return ""
+
+    spoken = re.sub(r"\.{4,}", "...", spoken)
+    spoken = re.sub(r"([!?])\1{1,}", r"\1", spoken)
+    spoken = re.sub(r"\s+([,.!?;:])", r"\1", spoken)
+    spoken = re.sub(r"([,.!?;:])(?=[A-Za-zÀ-ÿ])", r"\1 ", spoken)
+
+    # Sem ponto final o v3 corta a última palavra ou sobe o tom como se fosse pergunta.
+    if spoken[-1] not in ".!?…":
+        spoken += "."
+
     return re.sub(r"\s+", " ", spoken).strip()
