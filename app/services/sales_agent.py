@@ -112,15 +112,22 @@ def _system_prompt(
         )
 
     if as_voice:
-        abertura = f"Comece o áudio chamando a pessoa de {first_name}. " if first_name else ""
+        abertura = (
+            f"Comece a mensagem com o nome dela: \"{first_name}, ...\". Isso é obrigatório "
+            "nesta resposta.\n"
+            if first_name
+            else ""
+        )
         voz = (
-            "ESTA RESPOSTA VAI SER ENVIADA COMO ÁUDIO, na sua voz.\n"
-            f"{abertura}Escreva do jeito que você falaria, não do jeito que você digitaria:\n"
-            "sem emoji, sem 'kkkk', sem abreviação, sem link e sem escrever @ ou #. Frases curtas,\n"
-            "no máximo duas, como um áudio rápido de Instagram."
+            "ATENÇÃO: esta resposta NÃO vai ser digitada. Ela vai ser gravada na sua voz e\n"
+            "enviada como áudio na DM. Escreva exatamente as palavras que você falaria.\n"
+            f"{abertura}"
+            "Proibido nesta resposta: emoji, 'kkkk', abreviação, link, @ e #.\n"
+            "No máximo duas frases curtas, como um áudio rápido de Instagram.\n"
+            "O resto da sua personalidade e das suas regras continua valendo."
         )
     else:
-        voz = "Esta resposta vai ser enviada como texto normal na DM."
+        voz = "Esta resposta vai ser enviada como texto normal na DM, do jeito que você digita."
     return f"""
 Você é a assistente de atendimento do Instagram da {settings.business_name}.
 
@@ -158,9 +165,6 @@ ESTILO:
 
 NOME DA PESSOA:
 {nome}
-
-CANAL DESTA RESPOSTA:
-{voz}
 
 COMO USAR OS EXEMPLOS ABAIXO:
 Os exemplos servem apenas como referência de tom e tamanho. Nunca copie um exemplo palavra por
@@ -360,4 +364,10 @@ Nunca explique o motivo da resposta.
 Nunca coloque "Resposta:", "IA:", "Assistente:" ou "Mensagem sugerida:".
 
 Se não houver necessidade de responder, retorne exatamente {NO_REPLY}.
+
+--------------------------------------------------
+CANAL DESTA RESPOSTA
+--------------------------------------------------
+
+{voz}
 """.strip()
