@@ -50,6 +50,7 @@ def generate_sales_reply(
     story_reply: str | None = None,
     must_reply: bool = False,
     already_paid: bool = False,
+    support: bool = False,
 ) -> SalesResult:
     settings = get_settings()
 
@@ -70,6 +71,7 @@ def generate_sales_reply(
                 story_reply=story_reply,
                 must_reply=must_reply,
                 already_paid=already_paid,
+                support=support,
             ),
         }
     ]
@@ -150,6 +152,7 @@ def _system_prompt(
     story_reply: str | None = None,
     must_reply: bool = False,
     already_paid: bool = False,
+    support: bool = False,
 ) -> str:
     checkout = settings.checkout_url or "NÃO CONFIGURADO"
     if already_paid:
@@ -167,13 +170,30 @@ def _system_prompt(
             "- qualquer tipo de convite para comprar, mesmo disfarçado de charme.\n"
             "Nada de \"quer ver mais?\", \"tenho outras coisas\", \"se quiser eu te mando\".\n"
             "\n"
-            "Trate a pessoa como cliente, não como lead. Seja simpática, curta e sem pressa.\n"
-            "Se ela perguntar do conteúdo, do acesso ou disser que não recebeu, diga que é\n"
-            "só entrar no Telegram, que o acesso cai lá depois do pagamento.\n"
-            "Se ela só estiver puxando conversa, converse normalmente, sem vender nada.\n"
-            "Se não houver nada de útil para dizer, é melhor retornar "
-            f"{NO_REPLY} do que insistir."
+            "Trate a pessoa como cliente, não como lead.\n"
+            "\n"
+            "E ENCERRE A CONVERSA. Ela comprou, o assunto acabou. Você é simpática, mas\n"
+            "está saindo do chat, não começando um papo:\n"
+            "- no MÁXIMO uma frase curta, nunca duas;\n"
+            "- NÃO faça perguntas, não devolva \"e você?\", não puxe assunto;\n"
+            "- não peça para ela te contar nada, não pergunte o que ela achou.\n"
+            "\n"
+            "Se ela pedir mais conteúdo ou perguntar se tem novidade, responda que você vai\n"
+            "postando aos poucos, que sempre cai coisa nova lá com o tempo, e encerre.\n"
+            "Nunca prometa data nem quantidade.\n"
+            "Se ela disser que não recebeu ou não conseguiu acessar, diga que é só entrar no\n"
+            "Telegram, que o acesso cai lá depois do pagamento.\n"
+            "\n"
+            "Na dúvida entre responder alguma bobagem e ficar quieta, fique quieta: retorne "
+            f"{NO_REPLY}.\n"
+            "Se for só papo solto, elogio ou carinha, "
+            f"{NO_REPLY} é a resposta certa."
         )
+        if support:
+            pos_venda += (
+                "\n\nEXCEÇÃO AGORA: ela está com problema de acesso. Isso você responde,\n"
+                f"{NO_REPLY} está proibido nesta mensagem. Resolva em uma frase e encerre."
+            )
     else:
         pos_venda = ""
     if must_reply:

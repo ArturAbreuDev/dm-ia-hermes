@@ -37,6 +37,27 @@ _NAO_PAGOU = re.compile(
 )
 
 
+# Quem pagou e não conseguiu acessar merece resposta mesmo com a conversa encerrada.
+_SUPORTE = re.compile(
+    r"(?:"
+    r"\b(?:n[ãa]o|nao|n)\s+(?:recebi|chegou|veio|consigo|consegui|entrou|abriu|abre|funciona)|"
+    r"sem\s+acesso|n[ãa]o\s+tenho\s+acesso|"
+    r"cad[êe]\s+(?:o|a|meu|minha)|"
+    r"link\s+(?:do|de)\s+telegram|"
+    r"como\s+(?:acesso|entro|fa[çc]o\s+pra\s+entrar)|"
+    r"\bn[ãa]o\s+achei\b|"
+    r"\bdeu\s+erro\b|\btravou\b|\bexpirou\b|"
+    r"grupo\s+(?:n[ãa]o|nao)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def needs_support(text: str) -> bool:
+    """Problema de acesso depois da compra. Isso não é papo, é atendimento."""
+    return bool(text) and bool(_SUPORTE.search(text))
+
+
 def claims_payment(text: str) -> bool:
     """A pessoa está dizendo que já pagou?
 

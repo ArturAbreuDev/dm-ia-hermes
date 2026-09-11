@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     voice_director_model: str = ""
     public_base_url: str = ""
 
+    # Depois que a pessoa paga, a conversa se despede em poucas mensagens.
+    post_payment_replies: int = 2
+
     reply_delay_enabled: bool = True
     reply_delay_max_seconds: float = 120.0
 
