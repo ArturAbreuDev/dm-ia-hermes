@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 
 router = APIRouter(include_in_schema=False)
 
-_CONTACT_EMAIL = "arturdamaceno.dev@gmail.com"
+_CONTACT_EMAIL = "liviandradegomes@gmail.com"
 _BUSINESS_NAME = "Victor Miranda Kauer"
 _BUSINESS_CNPJ = "32.732.388/0001-01"
 _BUSINESS_PHONE = "+55 51 99913-0114"
