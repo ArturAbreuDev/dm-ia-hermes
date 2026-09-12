@@ -18,6 +18,7 @@ from app.services import (
     purchase,
     stories,
     timing,
+    tone,
     voice,
 )
 from app.services.instagram import (
@@ -134,6 +135,37 @@ def _handle_echo(event: dict[str, Any], message: dict[str, Any], settings) -> No
         contato,
         settings.human_takeover_minutes,
     )
+
+
+def _enviar_em_partes(sender_id: str, reply: str) -> bool:
+    """Manda a resposta como uma ou duas DMs curtas, com pausa entre elas.
+
+    Cada parte é gravada com o mid que a API devolve. Sem isso o eco da segunda
+    parte chegaria como desconhecido e o bot acharia que a Lívia respondeu à
+    mão, calando a si mesmo por quinze minutos.
+    """
+    partes = tone.split_messages(reply)
+    if not partes:
+        return False
+
+    for indice, parte in enumerate(partes):
+        if indice:
+            # Ninguém emenda duas mensagens no mesmo instante.
+            send_sender_action(sender_id, "typing_on")
+            time.sleep(min(len(parte) / 5.0 + 0.8, 4.0))
+        try:
+            enviado = send_text_message(sender_id, parte) or {}
+        except httpx.HTTPStatusError as extra:
+            # Conta apagada, desativada ou que bloqueou o perfil: não há o que fazer.
+            logger.warning(
+                "Não consegui entregar para IGSID=%s: %s", sender_id, extra.response.text
+            )
+            return indice > 0
+        memory.save_message(sender_id, "assistant", parte, mid=enviado.get("message_id"))
+
+    if len(partes) > 1:
+        logger.info("Resposta para IGSID=%s saiu em %s mensagens", sender_id, len(partes))
+    return True
 
 
 def _handle_messaging_event(event: dict[str, Any]) -> None:
@@ -274,22 +306,16 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         except Exception:
             logger.exception("Falha ao enviar áudio; caindo para texto")
 
-    if not sent_as_audio:
-        try:
-            enviado = send_text_message(sender_id, result.reply) or {}
-        except httpx.HTTPStatusError as extra:
-            # Conta apagada, desativada ou que bloqueou o perfil: não há o que fazer.
-            logger.warning(
-                "Não consegui entregar para IGSID=%s: %s", sender_id, extra.response.text
-            )
-            return
+    if sent_as_audio:
+        # Guardar o mid do nosso próprio envio é o que faz o eco dele ser
+        # reconhecido depois, em vez de parecer que a Lívia respondeu à mão.
+        memory.save_message(
+            sender_id, "assistant", result.reply, mid=enviado.get("message_id")
+        )
+    elif not _enviar_em_partes(sender_id, result.reply):
+        return
 
     send_sender_action(sender_id, "typing_off")
-    # Guardar o mid do nosso próprio envio é o que faz o eco dele ser
-    # reconhecido depois, em vez de parecer que a Lívia respondeu à mão.
-    memory.save_message(
-        sender_id, "assistant", result.reply, mid=enviado.get("message_id")
-    )
     for campo in stance.counters:
         memory.bump_lead_counter(sender_id, campo)
     if settings.checkout_url and settings.checkout_url in result.reply:

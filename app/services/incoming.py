@@ -84,19 +84,30 @@ def read(message: dict) -> Incoming:
             text=f"{base} {texto}".strip(), story_reply=story_reply, kind="imagem"
         )
 
-    if texto:
-        return Incoming(text=texto, story_reply=story_reply)
-
-    if "video" in tipos:
-        return Incoming(text="[a pessoa mandou um vídeo]", story_reply=story_reply, kind="video")
+    # Vídeo e post compartilhado vêm antes do texto puro de propósito: quando a
+    # pessoa manda um vídeo com legenda, os dois chegam no mesmo evento, e antes
+    # o texto vencia e o vídeo era descartado sem ela nem saber que veio algo.
+    if tipos & {"video", "ig_reel", "reel"}:
+        return Incoming(
+            text=f"[a pessoa mandou um vídeo] {texto}".strip(),
+            story_reply=story_reply,
+            kind="video",
+        )
     if "share" in tipos:
         return Incoming(
-            text="[a pessoa compartilhou um post com você]",
+            text=f"[a pessoa compartilhou um post com você] {texto}".strip(),
             story_reply=story_reply,
             kind="share",
         )
     if tipos & {"like_heart"}:
-        return Incoming(text="[a pessoa reagiu com um coração]", story_reply=story_reply, kind="reacao")
+        return Incoming(
+            text=f"[a pessoa reagiu com um coração] {texto}".strip(),
+            story_reply=story_reply,
+            kind="reacao",
+        )
+
+    if texto:
+        return Incoming(text=texto, story_reply=story_reply)
 
     outros = ", ".join(sorted(t for t in tipos if t)) or "desconhecido"
     return Incoming(text=f"[a pessoa mandou algo do tipo {outros}]", story_reply=story_reply, kind="outro")
