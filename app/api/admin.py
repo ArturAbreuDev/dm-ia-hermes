@@ -16,7 +16,7 @@ from app.models.schemas import (
 )
 from app.services.instagram import send_text_message
 from app.services.sales_agent import generate_sales_reply
-from app.services import stories, telegram
+from app.services import canned, engagement, stories, telegram
 from app.store import memory, story_context
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -111,13 +111,38 @@ def sync_stories() -> dict[str, Any]:
 
 @router.post("/simulate", response_model=SimulateResponse)
 def simulate_reply(payload: SimulateRequest) -> SimulateResponse:
-    """Gera uma resposta de venda sem chamar o Instagram. Útil para testar o agente."""
+    """Gera uma resposta de venda sem chamar o Instagram. Útil para testar o agente.
+
+    O clima e os contadores são os mesmos do webhook de propósito. Sem isso o
+    simulador não veria nada do que depende de sinal — mandar o link no "como
+    funciona", esfriar com quem só faz sala, calar quem passou do teto — e
+    testar aqui devolveria uma resposta que a produção não daria.
+    """
+    lead = memory.get_lead(payload.sender_id)
+    stance = engagement.decide(lead, payload.text, bool(lead.get("paid")))
     memory.save_message(payload.sender_id, "user", payload.text)
-    result = generate_sales_reply(payload.sender_id, payload.text)
+    if stance.silent:
+        return SimulateResponse(reply="", intent=f"calado:{stance.reason}")
+
+    result = generate_sales_reply(
+        payload.sender_id, payload.text, stance=stance, already_paid=bool(lead.get("paid"))
+    )
     memory.save_message(payload.sender_id, "assistant", result.reply)
     if result.lead:
         memory.save_lead(payload.sender_id, result.lead)
-    return SimulateResponse(reply=result.reply, handoff=result.handoff, intent=result.intent)
+    for campo in stance.counters:
+        memory.bump_lead_counter(payload.sender_id, campo)
+    settings = get_settings()
+    if settings.checkout_url and settings.checkout_url in result.reply:
+        memory.mark_link_sent(payload.sender_id)
+
+    pronto = canned.pick(result.reply, stance.flags, lead)
+    intent = result.intent or "chat"
+    if pronto:
+        # Só o nome: gerar o áudio de novo custaria à toa num teste.
+        intent = f"{intent}+audio:{pronto.nome}"
+        memory.set_lead_flag(payload.sender_id, pronto.campo, True)
+    return SimulateResponse(reply=result.reply, handoff=result.handoff, intent=intent)
 
 
 @router.post("/messages", response_model=SendMessageResponse)
