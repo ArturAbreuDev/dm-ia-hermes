@@ -33,6 +33,22 @@ def test_falar_de_comprar_fura_o_silencio() -> None:
         assert not engagement.decide({"muted": True}, frase, paid=False).silent, frase
 
 
+def test_a_porta_abre_mesmo_para_quem_consta_como_pago() -> None:
+    """O silenciamento manual manda: nenhum corte posterior pode fechar a exceção."""
+    gasto = {
+        "muted": True,
+        "paid": True,
+        "paid_replies": 9,
+        "replies": 99,
+        "link_sent": True,
+        "free_strikes": 9,
+    }
+    assert engagement.decide(gasto, "oi", paid=True).silent
+    aberto = engagement.decide(gasto, "vou pagar agora", paid=True)
+    assert not aberto.silent
+    assert aberto.reason == "silenciado_mas_quer_comprar"
+
+
 def test_erro_de_pagamento_tambem_fura() -> None:
     stance = engagement.decide({"muted": True}, "o pix deu erro", paid=False)
     assert not stance.silent

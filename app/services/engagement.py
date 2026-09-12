@@ -154,8 +154,12 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
         return Stance(flags=flags, counters=campos, **extra)
 
     # Silenciado na mão: só volta a existir se falar de comprar ou de pagar.
-    if lead.get("muted") and not wants_to_buy(text) and "erro_pagamento" not in flags:
-        return calado("silenciado_manualmente")
+    if lead.get("muted"):
+        if not wants_to_buy(text) and "erro_pagamento" not in flags:
+            return calado("silenciado_manualmente")
+        # A porta que sobrou tem que abrir mesmo. Um silêncio decidido depois
+        # não pode fechá-la, senão o silenciamento vira mudez total.
+        return contando("replies", reason="silenciado_mas_quer_comprar")
 
     if paid:
         teto = settings.post_payment_replies
