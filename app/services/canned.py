@@ -53,8 +53,17 @@ def pick(reply: str, flags, lead: dict) -> Canned | None:
     if not settings.canned_audio_enabled or not settings.voice_ready:
         return None
 
-    if "duvida_fluxo" in (flags or frozenset()) and not lead.get(DUVIDA.campo):
+    flags = flags or frozenset()
+    quer_entender = bool({"duvida_fluxo", "como_funciona"} & flags)
+
+    # Qual dos dois cabe depende de ele já ter o link ou não. O áudio de dúvida
+    # começa dizendo "aquela página que você abriu": mandar isso para quem nunca
+    # recebeu o link é falar de uma tela que ele não viu. Quem pergunta como
+    # funciona antes do link precisa da explicação do começo.
+    if quer_entender and lead.get("link_sent") and not lead.get(DUVIDA.campo):
         return DUVIDA
+    if quer_entender and not lead.get(GERAL.campo):
+        return GERAL
 
     checkout = settings.checkout_url
     if checkout and checkout in (reply or "") and not lead.get(GERAL.campo):

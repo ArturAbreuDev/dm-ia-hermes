@@ -112,9 +112,29 @@ def generate_sales_reply(
     enxuto = tone.soften(reply, _ultima_fala_dela(history))
     if enxuto != reply:
         logger.info("Resposta aparada: %r -> %r", reply, enxuto)
-    return SalesResult(
-        reply=enxuto[:900], intent="pos_venda" if already_paid else "chat"
-    )
+
+    # O corte vem antes do link de propósito: cortar depois picaria a URL.
+    texto = enxuto[:900]
+    flags = getattr(stance, "flags", frozenset()) or frozenset()
+    if "como_funciona" in flags and not already_paid:
+        texto = _garantir_link(texto, settings, sender_id)
+    return SalesResult(reply=texto, intent="pos_venda" if already_paid else "chat")
+
+
+def _garantir_link(reply: str, settings, sender_id: str) -> str:
+    """Põe o link na resposta do "como funciona" se o modelo tiver esquecido.
+
+    Pedir no prompt não garante: no dia 11, nove dos vinte e sete leads nunca
+    receberam link. Aqui ele vai como segunda mensagem, que é o formato que ela
+    já usa. Isso também desliga o áudio gerado, porque `should_use_voice` recusa
+    responder em áudio quando tem URL no texto — e é o certo, já que link falado
+    ninguém clica, e a explicação vai no áudio pronto que sai em seguida.
+    """
+    link = settings.checkout_link(sender_id)
+    if not link or link in reply:
+        return reply
+    logger.info("Link do checkout faltando no 'como funciona'; anexando")
+    return f"{reply}{tone.SEPARADOR}é 10, 20 ou 30, escolhe aí: {link}"
 
 
 def _ultima_fala_dela(history: list[dict[str, Any]]) -> str | None:
@@ -163,6 +183,18 @@ def _clean(raw: str) -> str:
 def _blocos_de_situacao(flags, stance, settings) -> list[str]:
     """Instruções que só valem para a mensagem de agora."""
     blocos: list[str] = []
+
+    if "como_funciona" in flags:
+        blocos.append(
+            "SITUAÇÃO: ele perguntou como funciona. Isso NÃO é papo, é alguém decidindo\n"
+            "comprar, então aqui você para de provocar e resolve.\n"
+            "\n"
+            "Explique em UMA frase curta: ele entra no link, escolhe o plano ali dentro,\n"
+            "paga e cai no grupo na hora. Diga que é 10, 20 ou 30 e MANDE O LINK nesta\n"
+            "mesma resposta. Não pergunte se ele quer que você mande, não peça para ele\n"
+            "confirmar nada e não escreva parágrafo: um áudio seu explicando tudo vai\n"
+            "junto logo depois, então o texto só precisa ser curto e ter o link."
+        )
 
     if "erro_pagamento" in flags:
         blocos.append(
@@ -220,6 +252,31 @@ def _blocos_de_situacao(flags, stance, settings) -> list[str]:
             "Fique no talvez distante: possível no papel, improvável na prática.\n"
             "\n"
             "Não se faça de vítima, não pareça constrangida e não trate ele como abusado.\n"
+            f"{temperatura}"
+        )
+
+    if "papo" in flags:
+        vezes = int(getattr(stance, "repeats", 0) or 0)
+        if vezes == 0:
+            temperatura = "Responda simpática, mas em pouquíssimas palavras."
+        elif vezes < 3:
+            temperatura = (
+                "Já é a segunda ou terceira vez que a conversa é só isso. Encurte mais:\n"
+                "três ou quatro palavras, sem animação."
+            )
+        else:
+            temperatura = (
+                "Já são várias mensagens só de sala. Responda quase monossilábica, sem\n"
+                "puxar nada, como quem está com o celular na mão fazendo outra coisa."
+            )
+        blocos.append(
+            "SITUAÇÃO: ele só está fazendo sala ou te elogiando, sem falar em comprar.\n"
+            "Isso quase nunca vira venda, então não invista tempo nem entusiasmo aqui.\n"
+            "\n"
+            "NÃO DÊ MORAL: nada de \"que fofo\", \"amei\", \"obrigada amor\", \"você é um\n"
+            "amor\", nada de elogiar de volta e nada de agradecer muito o elogio. Um \"kkk\",\n"
+            "um \"obrigada\" seco ou um \"sim\" já bastam. Sem pergunta, sem emoji, sem puxar\n"
+            "assunto novo e sem oferecer nada: se ele quiser, ele pergunta.\n"
             f"{temperatura}"
         )
 

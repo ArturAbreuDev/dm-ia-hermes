@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     ai_strikes: int = 2
     # Quantas vezes ela desconversa sobre gravar/encontrar antes de deixar morrer.
     live_strikes: int = 3
+    # Teto de quem só faz sala e só elogia. No dia 11 a conversa mais longa teve
+    # 46 mensagens dele e não vendeu nada, e a venda saiu da conversa mais curta:
+    # insistir com quem só puxa conversa gasta o dia e não converte.
+    small_talk_replies: int = 8
 
     # Segredo compartilhado com a plataforma de checkout. Sem ele o webhook de
     # pagamento recusa tudo, para ninguém marcar lead como pago de fora.

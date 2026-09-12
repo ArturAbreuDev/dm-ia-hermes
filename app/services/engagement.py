@@ -149,6 +149,56 @@ _DUVIDA_FLUXO = re.compile(
 )
 
 
+# Perguntou como é a compra, do zero. É a pergunta mais perto do pagamento que
+# existe nessa conta: quem pergunta isso está decidindo. Diferente de
+# `_DUVIDA_FLUXO`, que é de quem já abriu o link e se perdeu na página.
+_COMO_FUNCIONA = re.compile(
+    r"(?:"
+    r"como\s+(?:que\s+)?(?:funciona|faz|fa[çc]o|compro|pago)|"
+    r"como\s+(?:eu\s+)?(?:fa[çc]o|consigo)\s+(?:pra|para)\s+(?:comprar|pagar|entrar|ver)|"
+    r"(?:o\s+)?que\s+(?:que\s+)?[ée]\s+(?:isso|esse|essa)|"
+    r"(?:o\s+)?que\s+(?:voc[êe]|vc)\s+vende|"
+    r"(?:o\s+)?que\s+(?:que\s+)?tem\s+(?:no|l[áa]|dentro|de)|"
+    r"me\s+explica|explica\s+(?:a[íi]|melhor|como|isso)|"
+    r"(?:quero|queria)\s+(?:saber|entender)\s+como"
+    r")",
+    re.IGNORECASE,
+)
+
+
+# Só está fazendo sala: cumprimento e "tudo bem". A mensagem inteira tem que ser
+# isso, senão qualquer "oi, quanto custa" cairia aqui também.
+_SO_PAPO = re.compile(
+    r"^(?:(?:oi+|ol[áa]|eae|e\s*a[íi]|opa|fala|hey|hi|bom\s+dia|boa\s+(?:tarde|noite))"
+    r"[\s,!.?]*)*"
+    r"(?:tudo\s+(?:bem|bom|certo|tranquilo|joia)|td\s+(?:bem|bom)|"
+    r"como\s+(?:vai|(?:voc[êe]|vc)\s+(?:est[áa]|t[áa])|est[áa]|t[áa])|"
+    r"beleza|blz|de\s+boa|tudo\s+em\s+casa)"
+    # "tudo bom vc", "como vai você", "tudo bem por aí": o rabinho no fim é a
+    # mesma sala, então ele não pode fazer a mensagem deixar de casar.
+    r"[\s,!.?]*(?:(?:e\s+)?(?:voc[êe]|vc|tu|contigo|com\s+voc[êe]|por\s+a[íi]|a[íi])"
+    r"[\s,!.?]*)?$",
+    re.IGNORECASE,
+)
+
+# Elogio. Um elogio não tem problema nenhum; o que não vira venda é a conversa
+# que só tem isso, e é por isso que o contador existe.
+_ELOGIO = re.compile(
+    r"(?:"
+    r"\b(?:linda|lindona|lind[íi]ssima|gata|gatinha|gostosa|del[íi]cia|delicia|"
+    r"maravilhosa|perfeita|deusa|princesa|musa|rainha|bel[íi]ssima|"
+    r"encantadora|charmosa|sensacional|perfei[çc][ãa]o)\b|"
+    r"(?:voc[êe]|vc|tu)\s+[ée]\s+(?:muito\s+|mto\s+|mt\s+|super\s+|t[ãa]o\s+)?"
+    r"(?:linda|bonita|gata|gostosa|perfeita|maravilhosa|incr[íi]vel|especial|diferente)|"
+    r"amei\s+(?:seu|sua|voc[êe]|vc)|"
+    r"(?:que|q)\s+(?:corpo|olhos|sorriso|boca)\b|"
+    r"(?:t[áa]|est[áa])\s+(?:muito\s+)?(?:linda|gata|gostosa|maravilhosa)|"
+    r"\bapaixonad\w|\bte\s+amo\b|\bcasa\s+comigo\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
 def read_flags(text: str) -> frozenset[str]:
     """Lê o que essa mensagem revela sobre a pessoa, não sobre o assunto."""
     if not text:
@@ -166,6 +216,16 @@ def read_flags(text: str) -> frozenset[str]:
         achados.add("gp")
     if _DUVIDA_FLUXO.search(text):
         achados.add("duvida_fluxo")
+    if _COMO_FUNCIONA.search(text):
+        achados.add("como_funciona")
+    if _SO_PAPO.match(text.strip()) or _ELOGIO.search(text):
+        achados.add("papo")
+
+    # "papo" é o que sobra quando a mensagem não diz nada além disso. Se ela
+    # também pergunta preço ou como funciona, o que manda é a compra, não a sala:
+    # senão um "linda, como funciona?" seria tratado como conversa fiada.
+    if achados - {"papo"} or wants_to_buy(text):
+        achados.discard("papo")
     return frozenset(achados)
 
 
@@ -273,10 +333,22 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
     if lead.get("link_sent"):
         # Ele já tem o link na mão. Se não pagou até agora, conversa não resolve.
         teto = min(teto, _n(lead, "link_sent_at") + settings.max_replies_after_link)
+
+    # O teto curto vale pela mensagem de agora, não pelo histórico: se ele passou
+    # o dia fazendo sala e de repente pergunta o preço, "papo" já saiu dos sinais
+    # e o teto volta a ser o normal. Assim ela desiste do papo, não do cliente.
+    if "papo" in flags and not lead.get("link_sent"):
+        teto = min(teto, settings.small_talk_replies)
+
+    contadores = ("replies", "chat_strikes") if "papo" in flags else ("replies",)
     if respostas >= teto:
         return calado("conversa_longa_sem_compra")
     if respostas == teto - 1:
-        return contando("replies", farewell=away_excuse(), reason="ultima_sem_compra")
+        return contando(*contadores, farewell=away_excuse(), reason="ultima_sem_compra")
+    if "papo" in flags:
+        return contando(
+            *contadores, reason="so_papo", repeats=_n(lead, "chat_strikes")
+        )
     return contando("replies", reason="normal")
 
 

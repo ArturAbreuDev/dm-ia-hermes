@@ -61,16 +61,54 @@ def test_reconhece_quem_quer_gravar_ou_encontrar() -> None:
 
 def test_conversa_normal_nao_levanta_bandeira() -> None:
     for frase in [
-        "oi tudo bem?",
         "quanto custa?",
         "quero comprar",
-        "vc é linda",
         "que horas vc postou isso?",
         "[a pessoa te marcou no story dela: uma foto do cachorro]",
         "vou gravar um audio pra vc",
         "",
     ]:
         assert not engagement.read_flags(frase), frase
+
+
+def test_sala_e_elogio_sao_papo() -> None:
+    for frase in ["oi tudo bem?", "tudo bom vc", "e aí, beleza?", "vc é linda", "que gata"]:
+        assert "papo" in engagement.read_flags(frase), frase
+
+
+def test_a_compra_vence_o_papo() -> None:
+    """Um "oi linda, quanto custa" é cliente, não conversa fiada."""
+    for frase in ["oi linda, quanto custa?", "gata, como funciona?", "tudo bem? quero comprar"]:
+        assert "papo" not in engagement.read_flags(frase), frase
+
+
+def test_teto_cai_para_quem_so_faz_sala() -> None:
+    teto = get_settings().small_talk_replies
+    assert engagement.decide({"replies": teto - 1}, "tudo bem?", False).farewell is not None
+    assert engagement.decide({"replies": teto}, "vc é linda", False).silent
+    # Mas o teto curto é da mensagem de agora: falar de compra devolve a conversa.
+    assert not engagement.decide({"replies": teto}, "quanto custa?", False).silent
+    assert not engagement.decide({"replies": teto}, "como funciona?", False).silent
+
+
+def test_conta_as_vezes_que_foi_so_sala() -> None:
+    stance = engagement.decide({"replies": 2, "chat_strikes": 2}, "tudo bem?", False)
+    assert "chat_strikes" in stance.counters
+    assert stance.repeats == 2
+
+
+def test_trava_de_vez_quem_trata_como_garota_de_programa() -> None:
+    for frase in ["vc é gp?", "quanto vc cobra pela noite", "faz programa?", "qual seu cachê"]:
+        stance = engagement.decide({}, frase, False)
+        assert stance.silent and stance.mute, frase
+    # Vale até para quem já pagou e para quem fala de comprar na mesma frase.
+    assert engagement.decide({}, "quanto vc cobra", True).mute
+    assert engagement.decide({"replies": 2}, "quero comprar, mas vc é gp?", False).mute
+
+
+def test_gp_de_formula_1_nao_trava_ninguem() -> None:
+    for frase in ["tô assistindo o gp de fórmula 1", "o gp foi emocionante"]:
+        assert not engagement.decide({}, frase, False).mute, frase
 
 
 def test_esfria_e_desiste_de_quem_insiste_em_gravar() -> None:
