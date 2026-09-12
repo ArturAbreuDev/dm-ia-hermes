@@ -99,6 +99,11 @@ class Settings(BaseSettings):
     stories_instagram_access_token: str = ""
     diary_password: str = ""
 
+    @property
+    def admin_key(self) -> str:
+        """Uma senha só para o /diario e para as rotas de lead."""
+        return self.diary_password
+
     business_name: str = "Livia Gomes"
     business_tone: str = "feminina, confiante, provocante de maneira sutil"
     checkout_url: str = ""

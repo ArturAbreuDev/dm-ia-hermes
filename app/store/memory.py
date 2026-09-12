@@ -212,6 +212,18 @@ def bump_lead_counter(sender_id: str, campo: str) -> int:
     return valor
 
 
+def set_muted(sender_id: str, muted: bool) -> None:
+    """Silencia um contato específico. Ele só é respondido se falar de compra."""
+    lead = get_lead(sender_id)
+    if muted:
+        lead["muted"] = True
+        lead["muted_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        lead.pop("muted", None)
+        lead.pop("muted_at", None)
+    save_lead(sender_id, lead)
+
+
 def mark_human_reply(sender_id: str) -> None:
     """Anota que a Lívia respondeu à mão agora, reiniciando a janela de silêncio."""
     lead = get_lead(sender_id)

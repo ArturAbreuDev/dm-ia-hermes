@@ -81,6 +81,32 @@ _QUER_AO_VIVO = re.compile(
 )
 
 
+# Intenção clara de comprar. É a única coisa que fura um silenciamento manual.
+_QUER_COMPRAR = re.compile(
+    r"(?:"
+    r"\bvou\s+(?:pagar|comprar|assinar|pegar)\b|"
+    r"\bquero\s+(?:pagar|comprar|assinar|o\s+pack|o\s+conte[úu]do|ver\s+as\s+op[çc][õo]es)\b|"
+    r"\bvou\s+querer\b|\bt[ôo]\s+dentro\b|\bfechou\b|\bfechado\b|"
+    r"(?:me\s+)?manda\s+o\s+link|"
+    r"\bcomo\s+(?:pago|compro|fa[çc]o\s+pra\s+(?:pagar|comprar))\b|"
+    r"quanto\s+(?:custa|[ée]|sai|fica)|"
+    r"\bqual\s+o\s+(?:valor|pre[çc]o)\b|"
+    r"\bpode\s+mandar\s+o\s+link\b|"
+    r"\bvou\s+fazer\s+o\s+pix\b|"
+    r"\bqueria\s+(?:comprar|assinar)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def wants_to_buy(text: str) -> bool:
+    if not text:
+        return False
+    if payment.claims_payment(text):
+        return True
+    return bool(_QUER_COMPRAR.search(text))
+
+
 def read_flags(text: str) -> frozenset[str]:
     """Lê o que essa mensagem revela sobre a pessoa, não sobre o assunto."""
     if not text:
@@ -126,6 +152,10 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
 
     def contando(*campos: str, **extra) -> Stance:
         return Stance(flags=flags, counters=campos, **extra)
+
+    # Silenciado na mão: só volta a existir se falar de comprar ou de pagar.
+    if lead.get("muted") and not wants_to_buy(text) and "erro_pagamento" not in flags:
+        return calado("silenciado_manualmente")
 
     if paid:
         teto = settings.post_payment_replies

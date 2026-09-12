@@ -34,21 +34,49 @@ class StoryNoteRequest(BaseModel):
     id: str | None = None
 
 
+def _conferir_chave(chave: str | None) -> None:
+    """Estas rotas silenciam conversas e marcam gente como paga: não podem ficar
+    abertas na internet. A senha é a mesma do /diario, para não criar outra."""
+    esperada = get_settings().admin_key
+    if not esperada:
+        raise HTTPException(status_code=503, detail="DIARY_PASSWORD não configurada")
+    if chave != esperada:
+        raise HTTPException(status_code=403, detail="Chave inválida")
+
+
 @router.get("/leads/{igsid}")
-def ver_lead(igsid: str) -> dict[str, Any]:
+def ver_lead(igsid: str, k: str | None = None) -> dict[str, Any]:
+    _conferir_chave(k)
+    return {"igsid": igsid, "lead": memory.get_lead(igsid)}
+
+
+@router.post("/leads/{igsid}/mute")
+def silenciar(igsid: str, k: str | None = None) -> dict[str, Any]:
+    """Para de responder este contato, exceto se ele falar de comprar ou pagar."""
+    _conferir_chave(k)
+    memory.set_muted(igsid, True)
+    return {"igsid": igsid, "lead": memory.get_lead(igsid)}
+
+
+@router.delete("/leads/{igsid}/mute")
+def dessilenciar(igsid: str, k: str | None = None) -> dict[str, Any]:
+    _conferir_chave(k)
+    memory.set_muted(igsid, False)
     return {"igsid": igsid, "lead": memory.get_lead(igsid)}
 
 
 @router.post("/leads/{igsid}/paid")
-def marcar_pago(igsid: str) -> dict[str, Any]:
+def marcar_pago(igsid: str, k: str | None = None) -> dict[str, Any]:
     """Encerra a venda na mão, quando o pagamento foi confirmado por fora."""
+    _conferir_chave(k)
     memory.mark_paid(igsid)
     return {"igsid": igsid, "lead": memory.get_lead(igsid)}
 
 
 @router.delete("/leads/{igsid}/paid")
-def desmarcar_pago(igsid: str) -> dict[str, Any]:
+def desmarcar_pago(igsid: str, k: str | None = None) -> dict[str, Any]:
     """Desfaz, para o caso de falso positivo: alguém que disse ter pago e não pagou."""
+    _conferir_chave(k)
     memory.clear_paid(igsid)
     return {"igsid": igsid, "lead": memory.get_lead(igsid)}
 
