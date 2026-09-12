@@ -192,7 +192,24 @@ def direct_for_speech(text: str) -> str:
         logger.exception("Diretor de voz falhou; usando o texto original")
         return text
 
-    return _sanitize(directed) or text
+    pronto = _sanitize(directed)
+    if not _usavel(pronto, text):
+        logger.warning("Diretor devolveu texto sem pontuação; usando o original")
+        return text
+    return pronto
+
+
+def _usavel(directed: str, original: str) -> bool:
+    """O diretor às vezes exagera na regra de tirar vírgula e apaga tudo.
+
+    Uma fala longa sem nenhum ponto final vira um sopro único no v3, o que soa
+    pior do que a pontuação original. Nesse caso é melhor não usar o resultado.
+    """
+    if not directed:
+        return False
+    if len(directed) > 90 and not re.search(r"[.!?\n]", directed):
+        return False
+    return True
 
 
 def _sanitize(text: str) -> str:

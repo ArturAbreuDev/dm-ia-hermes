@@ -17,3 +17,4 @@ data/*.db
 .vscode/
 .DS_Store
 .env*
+audios/
