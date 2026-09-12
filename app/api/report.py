@@ -13,13 +13,21 @@ router = APIRouter(include_in_schema=False)
 
 FUSO = ZoneInfo("America/Sao_Paulo")
 
+# Antes de _handle_echo existir, o echo da própria conta caía no fluxo normal e
+# gravava as falas da Livia como se fossem de um contato, sob este ID. Parou de
+# crescer em 11/09 às 12:55, quando o webhook passou a tratar echo à parte; as
+# linhas antigas ficaram no banco e não podem entrar na contagem.
+ECHO_FANTASMA = "2109690816315244"
+
 
 def _lixo(sender_id: str) -> bool:
     """Fora da contagem: os testes e a conversa fantasma que o echo criou debaixo
     do próprio ID da conta antes da correção do webhook."""
     settings = get_settings()
     proprios = {settings.instagram_id, settings.instagram_page_id, settings.instagram_user_id}
-    return sender_id in proprios or sender_id.startswith(("teste", "prod-teste", "sim-"))
+    if sender_id in proprios or sender_id == ECHO_FANTASMA:
+        return True
+    return sender_id.startswith(("teste", "prod-teste", "sim-"))
 
 
 def _dia(momento: datetime) -> str:
