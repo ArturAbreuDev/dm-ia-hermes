@@ -72,6 +72,7 @@ def generate_sales_reply(
                 must_reply=must_reply,
                 already_paid=already_paid,
                 stance=stance,
+                checkout_url=settings.checkout_link(sender_id),
             ),
         }
     ]
@@ -243,8 +244,9 @@ def _system_prompt(
     must_reply: bool = False,
     already_paid: bool = False,
     stance: Any = None,
+    checkout_url: str | None = None,
 ) -> str:
-    checkout = settings.checkout_url or "NÃO CONFIGURADO"
+    checkout = checkout_url or settings.checkout_url or "NÃO CONFIGURADO"
     flags = getattr(stance, "flags", frozenset()) or frozenset()
     support = bool(getattr(stance, "support", False))
     if already_paid:

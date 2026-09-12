@@ -10,7 +10,15 @@ from typing import Any
 import httpx
 
 from app.config import get_settings
-from app.services import engagement, incoming, payment, stories, timing, voice
+from app.services import (
+    engagement,
+    incoming,
+    payment,
+    purchase,
+    stories,
+    timing,
+    voice,
+)
 from app.services.instagram import (
     get_user_profile,
     send_audio_message,
@@ -96,6 +104,37 @@ def process_instagram_event(payload: dict[str, Any]) -> None:
         logger.exception("Falha ao processar evento do Instagram")
 
 
+def _handle_echo(event: dict[str, Any], message: dict[str, Any], settings) -> None:
+    """Decide se a mensagem que saiu foi do bot ou da Lívia digitando na mão.
+
+    No eco quem manda é a conta, então o contato está no recipient. Se a Lívia
+    entrou na conversa, o bot sai de cena: ela assumiu, e duas vozes ao mesmo
+    tempo estragam tudo.
+    """
+    mid = message.get("mid")
+    # Nossos próprios envios são gravados com o mid que a API devolve.
+    if memory.already_processed(mid):
+        return
+
+    contato = (event.get("recipient") or {}).get("id")
+    proprios = {settings.instagram_id, settings.instagram_page_id, settings.instagram_user_id}
+    if not contato or contato in proprios:
+        return
+
+    texto = (message.get("text") or "").strip()
+    # Rede de segurança para o caso do eco chegar antes de gravarmos o mid.
+    if texto and texto == (memory.last_assistant_text(contato) or "").strip():
+        return
+
+    memory.save_message(contato, "assistant", texto or "[mídia enviada à mão]", mid=mid)
+    memory.mark_human_reply(contato)
+    logger.info(
+        "Resposta manual para IGSID=%s; bot em silêncio por %s min",
+        contato,
+        settings.human_takeover_minutes,
+    )
+
+
 def _handle_messaging_event(event: dict[str, Any]) -> None:
     message = event.get("message") or {}
     sender_id = (event.get("sender") or {}).get("id")
@@ -107,11 +146,17 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     if not sender_id or not message:
         logger.info("Ignorado: evento sem remetente ou sem mensagem")
         return
-    for bandeira in ("is_echo", "is_deleted", "is_unsupported"):
+    settings = get_settings()
+
+    # Eco: saiu mensagem desta conta. Pode ter sido o bot ou a Lívia na mão.
+    if message.get("is_echo"):
+        _handle_echo(event, message, settings)
+        return
+
+    for bandeira in ("is_deleted", "is_unsupported"):
         if message.get(bandeira):
             logger.info("Ignorado IGSID=%s: mensagem marcada como %s", sender_id, bandeira)
             return
-    settings = get_settings()
     if sender_id in {settings.instagram_id, settings.instagram_page_id, settings.instagram_user_id}:
         logger.info("Ignorado: a mensagem é da própria conta")
         return
@@ -128,11 +173,27 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
 
     memory.save_message(sender_id, "user", text, mid=mid)
 
-    if payment.claims_payment(text):
+    perfil = get_user_profile(sender_id)
+
+    # Estar no grupo do Telegram é prova de compra; a palavra dele é só indício.
+    if purchase.confirm_via_telegram(sender_id, perfil.get("username")):
+        pass
+    elif payment.claims_payment(text):
         if not memory.is_paid(sender_id):
             logger.info("IGSID=%s disse que pagou; encerrando a venda", sender_id)
         memory.mark_paid(sender_id)
     already_paid = memory.is_paid(sender_id)
+
+    # A Lívia assumiu a conversa há pouco. O estado continua em dia, mas quem
+    # fala é ela. Quando a janela vence sem mensagem nova, o bot volta sozinho.
+    espera = memory.human_pause_seconds(sender_id)
+    if espera > 0:
+        logger.info(
+            "Ignorado IGSID=%s: resposta manual recente, faltam %.0f min",
+            sender_id,
+            espera / 60,
+        )
+        return
 
     # Um só lugar decide se ainda vale a pena responder, e com que clima.
     lead = memory.get_lead(sender_id)
@@ -154,7 +215,7 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
 
     stories.maybe_sync()
     as_voice = voice.is_voice_moment(text, incoming_is_audio, sales_open=not already_paid)
-    first_name = voice.first_speakable_name(get_user_profile(sender_id))
+    first_name = voice.first_speakable_name(perfil)
 
     result = generate_sales_reply(
         sender_id,
@@ -204,16 +265,17 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         time.sleep(restante)
 
     sent_as_audio = False
+    enviado: dict[str, Any] = {}
     if audio_url:
         try:
-            send_audio_message(sender_id, audio_url)
+            enviado = send_audio_message(sender_id, audio_url) or {}
             sent_as_audio = True
         except Exception:
             logger.exception("Falha ao enviar áudio; caindo para texto")
 
     if not sent_as_audio:
         try:
-            send_text_message(sender_id, result.reply)
+            enviado = send_text_message(sender_id, result.reply) or {}
         except httpx.HTTPStatusError as extra:
             # Conta apagada, desativada ou que bloqueou o perfil: não há o que fazer.
             logger.warning(
@@ -222,7 +284,11 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
             return
 
     send_sender_action(sender_id, "typing_off")
-    memory.save_message(sender_id, "assistant", result.reply)
+    # Guardar o mid do nosso próprio envio é o que faz o eco dele ser
+    # reconhecido depois, em vez de parecer que a Lívia respondeu à mão.
+    memory.save_message(
+        sender_id, "assistant", result.reply, mid=enviado.get("message_id")
+    )
     for campo in stance.counters:
         memory.bump_lead_counter(sender_id, campo)
     if settings.checkout_url and settings.checkout_url in result.reply:

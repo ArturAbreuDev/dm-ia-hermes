@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_default_chat_id: str = ""
+    # O grupo/canal onde o Botgram joga quem comprou. Estar lá dentro é a prova
+    # de pagamento mais confiável que temos sem API de checkout.
+    telegram_group_chat_id: str = ""
+    telegram_webhook_secret: str = ""
 
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
@@ -64,6 +68,25 @@ class Settings(BaseSettings):
     ai_strikes: int = 2
     # Quantas vezes ela desconversa sobre gravar/encontrar antes de deixar morrer.
     live_strikes: int = 3
+
+    # Segredo compartilhado com a plataforma de checkout. Sem ele o webhook de
+    # pagamento recusa tudo, para ninguém marcar lead como pago de fora.
+    payment_webhook_secret: str = ""
+    # Nome do parâmetro em que a plataforma aceita uma referência livre, para o
+    # IGSID voltar no webhook e a venda saber de quem foi. Kirvano usa "src",
+    # AbacatePay usa "externalId". Vazio desliga o rastreio.
+    checkout_ref_param: str = ""
+
+    def checkout_link(self, igsid: str | None = None) -> str:
+        """O link de venda, com a marca do lead quando a plataforma permite."""
+        if not self.checkout_url or not self.checkout_ref_param or not igsid:
+            return self.checkout_url
+        juncao = "&" if "?" in self.checkout_url else "?"
+        return f"{self.checkout_url}{juncao}{self.checkout_ref_param}={igsid}"
+
+    # Quando a Lívia responde na mão, o bot sai de cena por um tempo. A janela
+    # reinicia a cada mensagem dela, e volta sozinha quando ela para.
+    human_takeover_minutes: int = 15
 
     reply_delay_enabled: bool = True
     reply_delay_max_seconds: float = 120.0

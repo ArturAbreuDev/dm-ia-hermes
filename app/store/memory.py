@@ -212,6 +212,47 @@ def bump_lead_counter(sender_id: str, campo: str) -> int:
     return valor
 
 
+def mark_human_reply(sender_id: str) -> None:
+    """Anota que a Lívia respondeu à mão agora, reiniciando a janela de silêncio."""
+    lead = get_lead(sender_id)
+    lead["human_reply_at"] = datetime.now(timezone.utc).isoformat()
+    save_lead(sender_id, lead)
+
+
+def human_pause_seconds(sender_id: str) -> float:
+    """Quanto ainda falta para o bot poder voltar a falar. Zero se já pode."""
+    quando = get_lead(sender_id).get("human_reply_at")
+    if not quando:
+        return 0.0
+    try:
+        marcado = datetime.fromisoformat(quando)
+    except (TypeError, ValueError):
+        return 0.0
+    if marcado.tzinfo is None:
+        marcado = marcado.replace(tzinfo=timezone.utc)
+    janela = get_settings().human_takeover_minutes * 60
+    passou = (datetime.now(timezone.utc) - marcado).total_seconds()
+    return max(janela - passou, 0.0)
+
+
+def last_assistant_text(sender_id: str) -> str | None:
+    """Última coisa que saiu desta conta nesta conversa, para reconhecer o eco."""
+    dsn = _postgres_dsn()
+    consulta = """
+        SELECT text FROM messages
+         WHERE sender_id = {ph} AND role = 'assistant'
+         ORDER BY id DESC LIMIT 1
+    """
+    if dsn:
+        with _postgres(dsn) as conn, conn.cursor() as cur:
+            cur.execute(consulta.format(ph="%s"), (sender_id,))
+            linha = cur.fetchone()
+        return linha[0] if linha else None
+    with _sqlite() as conn:
+        linha = conn.execute(consulta.format(ph="?"), (sender_id,)).fetchone()
+    return linha["text"] if linha else None
+
+
 def mark_link_sent(sender_id: str) -> None:
     """Guarda em que altura da conversa o link saiu, para saber quando desistir."""
     lead = get_lead(sender_id)

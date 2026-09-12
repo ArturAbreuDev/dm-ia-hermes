@@ -61,6 +61,67 @@ def send_voice_message(
         return _raise_for_telegram(response)
 
 
+def get_chat_member(user_id: str | int, chat_id: str | int | None = None) -> dict[str, Any] | None:
+    """Situação de uma pessoa no grupo, direto da fonte.
+
+    Só funciona com id numérico: a Bot API aceita @username em chat_id, mas
+    nunca em user_id, e não existe método para resolver @ de pessoa para id.
+    """
+    settings = get_settings()
+    alvo = chat_id or settings.telegram_group_chat_id
+    if not alvo:
+        return None
+    with httpx.Client(timeout=20) as client:
+        response = client.get(
+            _api_url("getChatMember"), params={"chat_id": alvo, "user_id": user_id}
+        )
+    corpo = response.json()
+    if not corpo.get("ok"):
+        logger.info("getChatMember recusado para %s: %s", user_id, corpo.get("description"))
+        return None
+    return corpo.get("result") or {}
+
+
+def is_in_group(user_id: str | int, chat_id: str | int | None = None) -> bool:
+    membro = get_chat_member(user_id, chat_id)
+    if not membro:
+        return False
+    status = membro.get("status")
+    if status in {"creator", "administrator", "member"}:
+        return True
+    # "restricted" ainda pode estar dentro: quem decide é o is_member.
+    return status == "restricted" and bool(membro.get("is_member"))
+
+
+def set_webhook(url: str, secret_token: str) -> dict[str, Any]:
+    """Assina os eventos do grupo.
+
+    chat_member não vem por padrão: a doc diz que o bot precisa ser
+    administrador E listar o tipo explicitamente em allowed_updates. E como
+    allowed_updates é uma lista de permissão, o que não está aqui não chega.
+    """
+    with httpx.Client(timeout=20) as client:
+        response = client.post(
+            _api_url("setWebhook"),
+            json={
+                "url": url,
+                "secret_token": secret_token,
+                "allowed_updates": [
+                    "message",
+                    "chat_member",
+                    "my_chat_member",
+                    "chat_join_request",
+                ],
+            },
+        )
+        return _raise_for_telegram(response)
+
+
+def get_webhook_info() -> dict[str, Any]:
+    with httpx.Client(timeout=20) as client:
+        return _raise_for_telegram(client.get(_api_url("getWebhookInfo")))
+
+
 def get_recent_updates(limit: int = 20) -> list[dict[str, Any]]:
     with httpx.Client(timeout=20) as client:
         response = client.get(_api_url("getUpdates"), params={"limit": limit})
