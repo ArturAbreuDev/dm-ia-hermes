@@ -7,8 +7,8 @@ from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
-from app.services import stories
-from app.store import story_context
+from app.services import instagram, stories
+from app.store import memory, story_context
 
 router = APIRouter(include_in_schema=False)
 
@@ -25,11 +25,11 @@ def _check(senha: str) -> None:
 
 
 @router.get("/diario", response_class=HTMLResponse)
-def diario(k: str = "") -> HTMLResponse:
+def diario(k: str = "", aviso: str = "") -> HTMLResponse:
     if not k:
         return HTMLResponse(_login_page())
     _check(k)
-    return HTMLResponse(_page(k))
+    return HTMLResponse(_page(k, aviso))
 
 
 @router.post("/diario")
@@ -55,6 +55,42 @@ def sincronizar(k: str = Form(...)) -> RedirectResponse:
     return RedirectResponse(url=f"/diario?k={k}", status_code=303)
 
 
+# Avisos são código, não texto vindo do formulário: nada do que a pessoa digita
+# volta para o HTML.
+_AVISOS = {
+    "bloqueado": ("ok", "Pronto, ela não fala mais com essa pessoa."),
+    "nao-achei": (
+        "erro",
+        "Não achei esse @ nas conversas. Confira a grafia — só dá para "
+        "bloquear quem já mandou DM alguma vez.",
+    ),
+    "liberado": ("ok", "Liberado. Ela volta a responder essa pessoa."),
+}
+
+
+@router.post("/diario/bloquear")
+def bloquear(k: str = Form(...), arroba: str = Form(...)) -> RedirectResponse:
+    _check(k)
+    limpo = arroba.strip().lstrip("@")
+    if not limpo:
+        return RedirectResponse(url=f"/diario?k={k}", status_code=303)
+
+    igsid = instagram.find_igsid_by_username(limpo)
+    if not igsid:
+        return RedirectResponse(url=f"/diario?k={k}&aviso=nao-achei", status_code=303)
+
+    memory.set_muted(igsid, True)
+    memory.remember_username(igsid, limpo)
+    return RedirectResponse(url=f"/diario?k={k}&aviso=bloqueado", status_code=303)
+
+
+@router.post("/diario/liberar")
+def liberar(k: str = Form(...), igsid: str = Form(...)) -> RedirectResponse:
+    _check(k)
+    memory.set_muted(igsid, False)
+    return RedirectResponse(url=f"/diario?k={k}&aviso=liberado", status_code=303)
+
+
 _CSS = """
 * { box-sizing: border-box; }
 body {
@@ -66,7 +102,7 @@ body {
 h1 { font-size: 22px; margin: 0 0 4px; }
 p.sub { margin: 0 0 24px; color: #9a9aa5; font-size: 14px; }
 form.novo { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
-textarea, input[type=password] {
+textarea, input[type=password], input[type=text] {
   width: 100%; padding: 14px; border-radius: 12px;
   border: 1px solid #2c2c33; background: #17171c; color: #f2f2f5;
   font: inherit; resize: vertical;
@@ -90,6 +126,13 @@ li .quando { display: block; color: #74747f; font-size: 12px; margin-top: 4px; }
 .vazio { color: #74747f; font-size: 14px; }
 .tag { font-size: 11px; padding: 2px 7px; border-radius: 99px; background: #2a2a33;
        color: #a0a0ab; margin-left: 6px; vertical-align: middle; }
+.aviso { border-radius: 12px; padding: 12px 14px; font-size: 14px; margin-bottom: 18px; }
+.aviso.ok { background: #13291d; color: #7ee2a8; }
+.aviso.erro { background: #2b1a1a; color: #f0a19a; }
+.arroba { font-variant-numeric: tabular-nums; }
+form.inline { display: flex; gap: 8px; }
+form.inline input { flex: 1; }
+form.inline button { width: auto; padding: 14px 18px; white-space: nowrap; }
 """
 
 
@@ -108,7 +151,30 @@ def _login_page() -> str:
 </div></body></html>"""
 
 
-def _page(k: str) -> str:
+def _bloco_bloqueio(k: str) -> str:
+    """Lista de quem está silenciado, com o @ quando a gente já sabe qual é."""
+    linhas = []
+    for igsid, lead in memory.muted_leads():
+        arroba = lead.get("username")
+        if not arroba:
+            arroba = instagram.get_user_profile(igsid).get("username")
+        quem = f"@{arroba}" if arroba else igsid
+        linhas.append(
+            f"""<li>
+              <span class="txt arroba">{html.escape(quem)}</span>
+              <form method="post" action="/diario/liberar">
+                <input type="hidden" name="k" value="{html.escape(k)}">
+                <input type="hidden" name="igsid" value="{html.escape(igsid)}">
+                <button class="link" type="submit">liberar</button>
+              </form>
+            </li>"""
+        )
+    if linhas:
+        return f"<ul>{''.join(linhas)}</ul>"
+    return '<p class="vazio">Ninguém bloqueado.</p>'
+
+
+def _page(k: str, aviso: str = "") -> str:
     itens = story_context.recent(limit=30)
     if itens:
         linhas = "".join(
@@ -135,6 +201,9 @@ def _page(k: str) -> str:
         lista = '<p class="vazio">Nada anotado ainda.</p>'
 
     seguro = html.escape(k)
+    tom, texto = _AVISOS.get(aviso, ("", ""))
+    faixa = f'<div class="aviso {tom}">{texto}</div>' if texto else ""
+    bloqueados = _bloco_bloqueio(k)
     return f"""<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -143,6 +212,8 @@ def _page(k: str) -> str:
   <h1>Diário da Lívia</h1>
   <p class="sub">Escreva o que você fez, do seu jeito. A Lívia do Instagram vai
   responder as DMs sabendo disso. Cada anotação vale por 7 dias.</p>
+
+  {faixa}
 
   <form class="novo" method="post" action="/diario">
     <input type="hidden" name="k" value="{seguro}">
@@ -157,6 +228,18 @@ def _page(k: str) -> str:
       Puxar os stories que estão no ar agora
     </button>
   </form>
+
+  <h2>Não responder</h2>
+  <p class="sub" style="margin-bottom:12px">Coloque o @ de quem ela deve deixar
+  de responder. Se a pessoa falar que vai pagar, ela responde mesmo assim.</p>
+  <form class="inline" method="post" action="/diario/bloquear"
+        style="margin-bottom:12px">
+    <input type="hidden" name="k" value="{seguro}">
+    <input type="text" name="arroba" placeholder="@ da pessoa"
+           autocapitalize="off" autocomplete="off" spellcheck="false" required>
+    <button type="submit">Bloquear</button>
+  </form>
+  {bloqueados}
 
   <h2>O que ela sabe</h2>
   {lista}

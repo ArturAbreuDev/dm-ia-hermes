@@ -72,6 +72,58 @@ def get_user_profile(igsid: str) -> dict[str, Any]:
         return {}
 
 
+def find_igsid_by_username(username: str) -> str | None:
+    """Descobre o IGSID de um @ varrendo as conversas da conta.
+
+    A API não tem rota que traduza @ para IGSID: a lista de conversas é o único
+    lugar onde os dois aparecem juntos. Só acha quem já mandou DM alguma vez,
+    o que serve, porque não há o que silenciar em quem nunca escreveu.
+    """
+    settings = get_settings()
+    if not settings.instagram_access_token:
+        return None
+    alvo = username.strip().lstrip("@").lower()
+    if not alvo:
+        return None
+
+    url = (
+        f"{settings.graph_api_base_url.rstrip('/')}/"
+        f"{settings.graph_api_version}/me/conversations"
+    )
+    depois: str | None = None
+    for _ in range(20):  # teto de páginas, para nunca girar sem fim
+        params: dict[str, Any] = {
+            "platform": "instagram",
+            "fields": "participants",
+            "limit": 50,
+        }
+        if depois:
+            params["after"] = depois
+        try:
+            with httpx.Client(timeout=20) as client:
+                resposta = client.get(
+                    url,
+                    params=params,
+                    headers={"Authorization": f"Bearer {settings.instagram_access_token}"},
+                )
+                resposta.raise_for_status()
+                corpo = resposta.json()
+        except httpx.HTTPError as extra:
+            detail = getattr(getattr(extra, "response", None), "text", extra)
+            logger.warning("Não consegui listar conversas para achar @%s: %s", alvo, detail)
+            return None
+
+        for conversa in corpo.get("data") or []:
+            for pessoa in (conversa.get("participants") or {}).get("data") or []:
+                if (pessoa.get("username") or "").lower() == alvo:
+                    return pessoa.get("id")
+
+        depois = ((corpo.get("paging") or {}).get("cursors") or {}).get("after")
+        if not depois:
+            break
+    return None
+
+
 def _send(recipient_id: str, message: dict[str, Any]) -> dict[str, Any]:
     settings = get_settings()
     if not settings.instagram_access_token or not settings.instagram_id:

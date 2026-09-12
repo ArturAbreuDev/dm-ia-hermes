@@ -301,6 +301,24 @@ def set_muted(sender_id: str, muted: bool) -> None:
     save_lead(sender_id, lead)
 
 
+def remember_username(sender_id: str, username: str | None) -> None:
+    """Guarda o @ no lead, para as telas mostrarem nome em vez de número."""
+    if not username:
+        return
+    lead = get_lead(sender_id)
+    limpo = username.strip().lstrip("@")
+    if not limpo or lead.get("username") == limpo:
+        return
+    lead["username"] = limpo
+    save_lead(sender_id, lead)
+
+
+def muted_leads() -> list[tuple[str, dict]]:
+    """Contatos silenciados, do silenciamento mais recente para o mais antigo."""
+    silenciados = [(s, d) for s, d in all_leads().items() if d.get("muted")]
+    return sorted(silenciados, key=lambda par: par[1].get("muted_at") or "", reverse=True)
+
+
 def mark_human_reply(sender_id: str) -> None:
     """Anota que a Lívia respondeu à mão agora, reiniciando a janela de silêncio."""
     lead = get_lead(sender_id)
