@@ -33,6 +33,8 @@ _EMOJI = re.compile(
 # Pedaços da frase, mantendo a pontuação de cada um.
 _TRECHOS = re.compile(r"[^.!?]+[.!?]*")
 
+_LINK = re.compile(r"https?://\S+")
+
 
 def split_messages(reply: str) -> list[str]:
     """Separa a resposta nas mensagens que devem sair, uma por vez."""
@@ -54,11 +56,14 @@ def soften(reply: str, previous_assistant: str | None = None) -> str:
     if not texto:
         return texto
 
-    perguntou_antes = "?" in (previous_assistant or "")
-    if perguntou_antes:
-        texto = _sem_pergunta(texto)
-    elif texto.count("?") > 1:
-        texto = _uma_pergunta(texto)
+    # Mensagem com link é mensagem de venda, e link tem ponto no meio: recortar
+    # frase aqui picaria a URL e derrubaria o checkout. Uma pergunta a mais numa
+    # mensagem dessas custa muito menos do que um link quebrado.
+    if not _LINK.search(texto):
+        if "?" in (previous_assistant or ""):
+            texto = _sem_pergunta(texto)
+        elif texto.count("?") > 1:
+            texto = _uma_pergunta(texto)
 
     return _um_emoji(texto)
 

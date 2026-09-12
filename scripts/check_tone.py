@@ -35,6 +35,13 @@ CASOS = [
     ("oi", "isso aí 👍🏽 demais 🔥", "isso aí 👍🏽 demais"),
     # Coração com seletor de variação também é um.
     ("oi", "obrigada ❤️", "obrigada ❤️"),
+    # Mensagem com link fica intacta, mesmo com pergunta depois de pergunta:
+    # recortar frase aqui picaria a URL no ponto do .club e mataria a venda.
+    (
+        "quer que eu te passe?",
+        "é 10, 20 ou 30, escolhe aí https://botgram.club/livia-gomes-fotos quer?",
+        None,
+    ),
 ]
 
 erros = 0
