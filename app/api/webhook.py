@@ -231,6 +231,9 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     # Um só lugar decide se ainda vale a pena responder, e com que clima.
     lead = memory.get_lead(sender_id)
     stance = engagement.decide(lead, text, already_paid)
+    if stance.mute and not lead.get("muted"):
+        memory.set_muted(sender_id, True)
+        logger.info("IGSID=%s silenciado de vez: %s", sender_id, stance.reason)
     if stance.silent:
         logger.info("Ignorado IGSID=%s: %s", sender_id, stance.reason)
         return

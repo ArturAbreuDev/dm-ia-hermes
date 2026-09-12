@@ -81,6 +81,29 @@ _QUER_AO_VIVO = re.compile(
 )
 
 
+# Tratou ela como garota de programa: perguntou se é GP, quanto cobra pela noite,
+# se faz programa. Aqui não tem escalonamento nem segunda chance. Isso não é
+# cliente do que ela vende, é problema, e a conversa morre na hora.
+_TRATOU_COMO_GP = re.compile(
+    r"(?:"
+    # "gp" solto pega o GP de Fórmula 1, então só vale com pessoa em volta.
+    r"(?:voc[êe]|vc|tu)\s+(?:[ée]|eh|e)\s+gp\b|\b(?:[ée]|eh)\s+gp\b|\bgp\s*\?|"
+    r"\bfaz\s+gp\b|\bgdp\b|garota\s+de\s+programa|"
+    r"\bacompanhante\b|\bmich[êe]\b|\bprograminha\b|\bcach[êe]\b|"
+    r"(?:faz|fazer|faria|aceita|cobra|rola|tem|marca)\s+(?:um\s+)?programa\b|"
+    r"programa\s+completo|"
+    r"(?:voc[êe]|vc)\s+[ée]\s+(?:puta|prostituta|garota\s+de\s+programa)|"
+    r"\b(?:[ée]|eh)\s+(?:puta|prostituta)\b|"
+    r"quanto\s+(?:pra|para|pela|pelo|custa\s+(?:pra|para))\s+"
+    r"(?:transar|trepar|comer|te\s+comer|dormir|passar\s+a\s+noite|hora|noite|"
+    r"sair\s+comigo|me\s+atender)|"
+    r"quanto\s+(?:voc[êe]|vc)\s+cobra|\bcobra\s+quanto\b|"
+    r"pago\s+(?:pra|para)\s+(?:transar|dormir|sair|te\s+ver|te\s+comer)"
+    r")",
+    re.IGNORECASE,
+)
+
+
 # Intenção clara de comprar. É a única coisa que fura um silenciamento manual.
 _QUER_COMPRAR = re.compile(
     r"(?:"
@@ -139,6 +162,8 @@ def read_flags(text: str) -> frozenset[str]:
         achados.add("erro_pagamento")
     if _QUER_AO_VIVO.search(text):
         achados.add("ao_vivo")
+    if _TRATOU_COMO_GP.search(text):
+        achados.add("gp")
     if _DUVIDA_FLUXO.search(text):
         achados.add("duvida_fluxo")
     return frozenset(achados)
@@ -154,6 +179,10 @@ class Stance:
     """
 
     silent: bool = False
+    # Pede para quem chama gravar isso no lead: a conversa não fecha só agora,
+    # fecha para sempre. Quem escreve é o webhook, para `decide` seguir sem
+    # efeito colateral e continuar fácil de testar.
+    mute: bool = False
     farewell: Away | None = None
     support: bool = False
     reason: str = "normal"
@@ -173,6 +202,12 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
 
     def contando(*campos: str, **extra) -> Stance:
         return Stance(flags=flags, counters=campos, **extra)
+
+    # Vem antes de tudo, inclusive de quem já pagou e de quem diz querer comprar:
+    # "quanto você cobra pela noite" casa com preço, e sem esta trava na frente a
+    # conversa seguiria pelo caminho da venda. Não tem aviso nem despedida.
+    if "gp" in flags:
+        return Stance(silent=True, mute=True, reason="tratou_como_gp", flags=flags)
 
     # Silenciado na mão: só volta a existir se falar de comprar ou de pagar.
     if lead.get("muted"):
