@@ -22,6 +22,33 @@ _local: dict[str, tuple[bytes, str]] = {}
 RETENTION = timedelta(days=1)
 
 
+def save_audio_with_id(clip_id: str, data: bytes, mime: str) -> str:
+    """Guarda com um id escolhido, para o mesmo texto reaproveitar o mesmo áudio.
+
+    A limpeza diária ainda apaga, mas quem chama regenera quando não encontrar,
+    então na prática é uma geração por dia em vez de uma por mensagem.
+    """
+    dsn = _postgres_dsn()
+    if not dsn:
+        _local[clip_id] = (data, mime)
+        return clip_id
+
+    now = datetime.now(timezone.utc)
+    with _postgres(dsn) as conn, conn.cursor() as cur:
+        cur.execute(_TABLE)
+        cur.execute(_ADD_MIME)
+        cur.execute(
+            """
+            INSERT INTO audio_clips (id, data, mime, created_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                data = EXCLUDED.data, mime = EXCLUDED.mime, created_at = EXCLUDED.created_at
+            """,
+            (clip_id, data, mime, now),
+        )
+    return clip_id
+
+
 def save_audio(data: bytes, mime: str) -> str:
     clip_id = uuid.uuid4().hex
     dsn = _postgres_dsn()

@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     elevenlabs_stability: float = 0.5
     voice_replies_enabled: bool = True
     voice_max_chars: int = 300
+    # Áudios prontos que ela manda ao explicar o fluxo ou ao passar o link.
+    canned_audio_enabled: bool = True
     voice_director_enabled: bool = True
     voice_director_model: str = ""
     public_base_url: str = ""

@@ -107,6 +107,25 @@ def wants_to_buy(text: str) -> bool:
     return bool(_QUER_COMPRAR.search(text))
 
 
+# Abriu o link e estranhou o que viu, ou ainda não entendeu como é a compra.
+_DUVIDA_FLUXO = re.compile(
+    r"(?:"
+    r"n[ãa]o\s+(?:foi|fui|abriu|abre|caiu|ca[íi]|vai|entrou)\s+"
+    r"(?:para\s+o|pro|pra|nos|nas|no|na|o|a)?\s*telegram|"
+    r"(?:p[áa]gina|tela|site)\s+de\s+pagamento|"
+    r"(?:onde|aonde)\s+(?:t[áa]|est[áa]|fica|[ée])\s+o\s+(?:grupo|telegram|conte[úu]do)|"
+    r"(?:esse|este|o)\s+link\s+(?:t[áa]|est[áa])\s+(?:certo|errado)|"
+    r"link\s+errado|"
+    r"abriu\s+outra\s+coisa|"
+    r"s[óo]\s+(?:tem|aparece|apareceu)\s+(?:os\s+)?planos|"
+    r"como\s+(?:que\s+)?(?:funciona|[ée])\s*(?:isso|a\s+compra|pra\s+comprar)?\??$|"
+    r"n[ãa]o\s+entendi\s+(?:como|nada|direito|bem)|"
+    r"me\s+explica\s+(?:melhor|como|direito)"
+    r")",
+    re.IGNORECASE,
+)
+
+
 def read_flags(text: str) -> frozenset[str]:
     """Lê o que essa mensagem revela sobre a pessoa, não sobre o assunto."""
     if not text:
@@ -120,6 +139,8 @@ def read_flags(text: str) -> frozenset[str]:
         achados.add("erro_pagamento")
     if _QUER_AO_VIVO.search(text):
         achados.add("ao_vivo")
+    if _DUVIDA_FLUXO.search(text):
+        achados.add("duvida_fluxo")
     return frozenset(achados)
 
 

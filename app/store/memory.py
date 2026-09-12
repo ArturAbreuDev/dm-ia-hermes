@@ -204,6 +204,15 @@ def clear_paid(sender_id: str) -> None:
     save_lead(sender_id, lead)
 
 
+def set_lead_flag(sender_id: str, campo: str, valor: bool = True) -> None:
+    lead = get_lead(sender_id)
+    if valor:
+        lead[campo] = True
+    else:
+        lead.pop(campo, None)
+    save_lead(sender_id, lead)
+
+
 def bump_lead_counter(sender_id: str, campo: str) -> int:
     lead = get_lead(sender_id)
     valor = int(lead.get(campo, 0)) + 1

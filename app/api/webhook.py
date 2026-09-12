@@ -11,6 +11,7 @@ import httpx
 
 from app.config import get_settings
 from app.services import (
+    canned,
     engagement,
     incoming,
     payment,
@@ -293,4 +294,21 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         memory.bump_lead_counter(sender_id, campo)
     if settings.checkout_url and settings.checkout_url in result.reply:
         memory.mark_link_sent(sender_id)
+
+    # Explicar o fluxo é sempre a mesma explicação, e falada convence mais.
+    # Vai depois do texto, como quem completa a ideia num áudio.
+    pronto = canned.pick(result.reply, stance.flags, lead)
+    if pronto and not sent_as_audio:
+        url_pronta = canned.url_for(pronto)
+        if url_pronta:
+            try:
+                send_sender_action(sender_id, "typing_on")
+                time.sleep(min(len(pronto.texto) / 14.0, 8.0))
+                send_audio_message(sender_id, url_pronta)
+                memory.set_lead_flag(sender_id, pronto.campo, True)
+                logger.info("Áudio pronto %s enviado para IGSID=%s", pronto.nome, sender_id)
+            except Exception:
+                logger.exception("Falha ao enviar o áudio pronto %s", pronto.nome)
+            finally:
+                send_sender_action(sender_id, "typing_off")
     logger.info("Respondido IGSID=%s intent=%s audio=%s", sender_id, result.intent, sent_as_audio)
