@@ -14,6 +14,14 @@ router = APIRouter(include_in_schema=False)
 FUSO = ZoneInfo("America/Sao_Paulo")
 
 
+def _lixo(sender_id: str) -> bool:
+    """Fora da contagem: os testes e a conversa fantasma que o echo criou debaixo
+    do próprio ID da conta antes da correção do webhook."""
+    settings = get_settings()
+    proprios = {settings.instagram_id, settings.instagram_page_id, settings.instagram_user_id}
+    return sender_id in proprios or sender_id.startswith(("teste", "prod-teste", "sim-"))
+
+
 def _dia(momento: datetime) -> str:
     if momento.tzinfo is None:
         momento = momento.replace(tzinfo=timezone.utc)
@@ -43,9 +51,9 @@ def report(k: str | None = None, days: int = 7, profiles: bool = False) -> dict:
     if k != settings.admin_key:
         raise HTTPException(status_code=403, detail="Chave inválida")
 
-    mensagens = memory.message_activity(days=days)
-    leads = memory.all_leads()
-    primeira_vez = memory.first_seen()
+    mensagens = [m for m in memory.message_activity(days=days) if not _lixo(m["sender_id"])]
+    leads = {s: d for s, d in memory.all_leads().items() if not _lixo(s)}
+    primeira_vez = {s: q for s, q in memory.first_seen().items() if not _lixo(s)}
 
     por_dia: dict[str, dict] = defaultdict(
         lambda: {"recebidas": 0, "enviadas": 0, "pessoas": set(), "novas": 0}
