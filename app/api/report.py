@@ -20,6 +20,20 @@ def _dia(momento: datetime) -> str:
     return momento.astimezone(FUSO).date().isoformat()
 
 
+@router.get("/v1/report/thread/{igsid}")
+def thread(igsid: str, k: str | None = None, limit: int = 40) -> dict:
+    """Últimas mensagens de uma conversa, para conferir caso estranho."""
+    settings = get_settings()
+    if not settings.admin_key or k != settings.admin_key:
+        raise HTTPException(status_code=403, detail="Chave inválida")
+    return {
+        "igsid": igsid,
+        "perfil": get_user_profile(igsid),
+        "lead": memory.get_lead(igsid),
+        "mensagens": memory.get_history(igsid, limit=limit),
+    }
+
+
 @router.get("/v1/report")
 def report(k: str | None = None, days: int = 7, profiles: bool = False) -> dict:
     """Agregados de conversa por dia, no fuso de São Paulo."""
