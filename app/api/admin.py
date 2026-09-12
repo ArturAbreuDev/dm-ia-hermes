@@ -119,13 +119,14 @@ def simulate_reply(payload: SimulateRequest) -> SimulateResponse:
     testar aqui devolveria uma resposta que a produção não daria.
     """
     lead = memory.get_lead(payload.sender_id)
-    stance = engagement.decide(lead, payload.text, bool(lead.get("paid")))
+    pago = memory.is_paid(payload.sender_id)
+    stance = engagement.decide(lead, payload.text, pago)
     memory.save_message(payload.sender_id, "user", payload.text)
     if stance.silent:
         return SimulateResponse(reply="", intent=f"calado:{stance.reason}")
 
     result = generate_sales_reply(
-        payload.sender_id, payload.text, stance=stance, already_paid=bool(lead.get("paid"))
+        payload.sender_id, payload.text, stance=stance, already_paid=pago
     )
     memory.save_message(payload.sender_id, "assistant", result.reply)
     if result.lead:
