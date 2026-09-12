@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -169,6 +169,74 @@ def get_history(sender_id: str, limit: int = 12) -> list[dict[str, str]]:
             (sender_id, limit),
         ).fetchall()
     return [{"role": row["role"], "text": row["text"]} for row in reversed(rows)]
+
+
+def message_activity(days: int = 7) -> list[dict]:
+    """Uma linha por mensagem recente, para os relatórios agregarem como quiserem."""
+    corte = datetime.now(timezone.utc) - timedelta(days=days)
+    dsn = _postgres_dsn()
+    if dsn:
+        with _postgres(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT sender_id, role, created_at, text
+                FROM messages
+                WHERE created_at >= %s
+                ORDER BY created_at
+                """,
+                (corte,),
+            )
+            linhas = cur.fetchall()
+        return [
+            {"sender_id": r[0], "role": r[1], "created_at": r[2], "text": r[3]} for r in linhas
+        ]
+    with _sqlite() as conn:
+        linhas = conn.execute(
+            """
+            SELECT sender_id, role, created_at, text
+            FROM messages
+            WHERE created_at >= ?
+            ORDER BY created_at
+            """,
+            (corte.isoformat(),),
+        ).fetchall()
+    return [
+        {
+            "sender_id": r["sender_id"],
+            "role": r["role"],
+            "created_at": datetime.fromisoformat(r["created_at"]),
+            "text": r["text"],
+        }
+        for r in linhas
+    ]
+
+
+def first_seen() -> dict[str, datetime]:
+    """Momento da primeira mensagem de cada pessoa, para contar conversa nova."""
+    dsn = _postgres_dsn()
+    if dsn:
+        with _postgres(dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT sender_id, MIN(created_at) FROM messages GROUP BY sender_id")
+            return {r[0]: r[1] for r in cur.fetchall()}
+    with _sqlite() as conn:
+        linhas = conn.execute(
+            "SELECT sender_id, MIN(created_at) AS primeira FROM messages GROUP BY sender_id"
+        ).fetchall()
+    return {r["sender_id"]: datetime.fromisoformat(r["primeira"]) for r in linhas}
+
+
+def all_leads() -> dict[str, dict]:
+    dsn = _postgres_dsn()
+    if dsn:
+        with _postgres(dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT sender_id, data FROM leads")
+            linhas = cur.fetchall()
+        return {
+            r[0]: (r[1] if isinstance(r[1], dict) else json.loads(r[1])) for r in linhas
+        }
+    with _sqlite() as conn:
+        linhas = conn.execute("SELECT sender_id, data FROM leads").fetchall()
+    return {r["sender_id"]: json.loads(r["data"]) for r in linhas}
 
 
 def get_lead(sender_id: str) -> dict:
