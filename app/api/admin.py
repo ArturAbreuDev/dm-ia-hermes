@@ -137,7 +137,12 @@ def simulate_reply(payload: SimulateRequest) -> SimulateResponse:
     if settings.checkout_url and settings.checkout_url in result.reply:
         memory.mark_link_sent(payload.sender_id)
 
-    pronto = canned.pick(result.reply, stance.flags, lead)
+    # O mesmo desvio do webhook. Aqui o nome sai vazio porque a simulação não
+    # busca perfil no Instagram, então o áudio de teste chama de "amor".
+    if stance.abertura:
+        pronto = canned.abertura(None)
+    else:
+        pronto = canned.pick(result.reply, stance.flags, lead)
     intent = result.intent or "chat"
     if pronto:
         # Só o nome: gerar o áudio de novo custaria à toa num teste.
