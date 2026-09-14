@@ -116,7 +116,8 @@ def generate_sales_reply(
     # O corte vem antes do link de propósito: cortar depois picaria a URL.
     texto = enxuto[:900]
     flags = getattr(stance, "flags", frozenset()) or frozenset()
-    if "como_funciona" in flags and not already_paid:
+    quer_link = "como_funciona" in flags or bool(getattr(stance, "abertura", False))
+    if quer_link and not already_paid:
         texto = _garantir_link(texto, settings, sender_id)
     return SalesResult(reply=texto, intent="pos_venda" if already_paid else "chat")
 
@@ -196,6 +197,17 @@ def _blocos_de_situacao(flags, stance, settings) -> list[str]:
             "junto logo depois, então o texto só precisa ser curto e ter o link."
         )
 
+    if bool(getattr(stance, "abertura", False)):
+        blocos.append(
+            "SITUAÇÃO: é a PRIMEIRA mensagem dele e ele já chegou elogiando ou já falando\n"
+            "de sexo. Quem chega assim não precisa ser aquecido, precisa saber onde comprar.\n"
+            "\n"
+            "Responda UMA linha curta reagindo ao que ele disse, sem se fazer de ofendida e\n"
+            "sem dar sermão, e mande o link. Nada de pergunta, nada de puxar conversa: um\n"
+            "áudio seu vai logo depois explicando que o resto está no seu Telegram, então\n"
+            "não explique isso no texto nem repita o que o áudio vai dizer."
+        )
+
     if "erro_pagamento" in flags:
         blocos.append(
             "SITUAÇÃO: deu erro no pagamento dela. Isso é alguém tentando te pagar, então\n"
@@ -253,6 +265,14 @@ def _blocos_de_situacao(flags, stance, settings) -> list[str]:
             "\n"
             "Não se faça de vítima, não pareça constrangida e não trate ele como abusado.\n"
             f"{temperatura}"
+        )
+
+    if getattr(stance, "reason", "") == "ultima_depois_do_link":
+        blocos.append(
+            "SITUAÇÃO: ele já tem o link e voltou falando de outra coisa, que não é a\n"
+            "compra. Você não vai insistir nem vender de novo: o link está lá, ele viu.\n"
+            "Responda o que ele disse em pouquíssimas palavras e vá embora, sem cobrar\n"
+            "resposta, sem perguntar se ele viu o link e sem falar de plano nem de preço."
         )
 
     if "papo" in flags:

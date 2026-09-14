@@ -326,7 +326,10 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
 
     # Explicar o fluxo é sempre a mesma explicação, e falada convence mais.
     # Vai depois do texto, como quem completa a ideia num áudio.
-    pronto = canned.pick(result.reply, stance.flags, lead)
+    if stance.abertura:
+        pronto = canned.abertura(first_name)
+    else:
+        pronto = canned.pick(result.reply, stance.flags, lead)
     if pronto and not sent_as_audio:
         url_pronta = canned.url_for(pronto)
         if url_pronta:

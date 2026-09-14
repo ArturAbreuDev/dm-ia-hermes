@@ -146,11 +146,35 @@ def test_cala_conversa_longa_sem_compra() -> None:
 def test_desiste_mais_rapido_depois_do_link() -> None:
     """Ele já tem o link. Se não pagou, mais conversa não resolve."""
     settings = get_settings()
-    lead = {"replies": 4, "link_sent": True, "link_sent_at": 1}
-    assert lead["replies"] >= 1 + settings.max_replies_after_link - 3
+    lead = {"link_sent": True, "link_sent_at": 1}
     gasto = 1 + settings.max_replies_after_link
-    assert engagement.decide({**lead, "replies": gasto}, "oi", False).silent
-    assert not engagement.decide({**lead, "replies": gasto - 2}, "oi", False).silent
+    assert engagement.decide({**lead, "replies": gasto}, "como funciona?", False).silent
+    assert not engagement.decide({**lead, "replies": gasto - 2}, "como funciona?", False).silent
+
+
+def test_depois_do_link_responde_duvida_e_ignora_o_resto() -> None:
+    lead = {"link_sent": True, "link_sent_at": 3, "replies": 3}
+    for frase in ["como funciona?", "não foi pro telegram", "vou pagar agora"]:
+        stance = engagement.decide(dict(lead), frase, False)
+        assert not stance.silent and stance.farewell is None, frase
+
+    # Fora do assunto ela responde uma vez, avisando que vai sair, e depois cala.
+    for frase in ["e vc gosta de que", "tudo bem?", "quero te ver ao vivo"]:
+        stance = engagement.decide(dict(lead), frase, False)
+        assert stance.farewell is not None and not stance.silent, frase
+        assert engagement.decide({**lead, "replies": 4}, frase, False).silent, frase
+
+    # E o corte não pode dar resposta extra a quem já estourou o teto normal.
+    assert engagement.decide({**lead, "replies": 12}, "oi", False).silent
+
+
+def test_chegada_ousada_pede_o_audio_de_abertura() -> None:
+    for frase in ["você é muito linda", "que gata", "quero te comer", "manda nudes"]:
+        assert engagement.decide({}, frase, False).abertura, frase
+    # "tudo bem" não é ousadia, e um elogio na quinta mensagem também não é chegada.
+    for frase in ["oi", "oi tudo bem?", "como funciona?"]:
+        assert not engagement.decide({}, frase, False).abertura, frase
+    assert not engagement.decide({"replies": 1}, "você é linda", False).abertura
 
 
 def test_avisa_que_esta_saindo_na_ultima() -> None:

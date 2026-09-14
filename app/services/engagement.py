@@ -181,6 +181,23 @@ _SO_PAPO = re.compile(
     re.IGNORECASE,
 )
 
+# Chegou falando de sexo. Não é ofensa nem motivo para travar nada: é gente que
+# já sabe o que quer, e o único erro possível aqui é fazer sala em vez de vender.
+_PUTARIA = re.compile(
+    r"(?:"
+    r"\bgoz\w+|\bpunheta\b|\bbat(?:er|endo)\s+uma\b|"
+    r"\bpau\s+(?:duro|grande|na\s+m[ãa]o)\b|\bpiroca\b|\bbucet\w+|\bxoxota\b|"
+    r"\b(?:transar|trepar|foder|fuder|meter|metendo)\b|"
+    r"\b(?:te|voc[êe]|vc)\s+comer\b|\bcomer\s+(?:voc[êe]|vc|tu)\b|"
+    r"\b(?:chupar|chupa|boquete)\b|"
+    r"\bsentar?\s+(?:em|no)\s+(?:mim|meu)\b|"
+    r"\btes[ãa]o\b|\bnudes?\b|"
+    r"\bsafad\w+|\bputinha\b|"
+    r"\bquero\s+(?:te\s+)?(?:comer|pegar|chupar|foder)\b"
+    r")",
+    re.IGNORECASE,
+)
+
 # Elogio. Um elogio não tem problema nenhum; o que não vira venda é a conversa
 # que só tem isso, e é por isso que o contador existe.
 _ELOGIO = re.compile(
@@ -218,14 +235,21 @@ def read_flags(text: str) -> frozenset[str]:
         achados.add("duvida_fluxo")
     if _COMO_FUNCIONA.search(text):
         achados.add("como_funciona")
-    if _SO_PAPO.match(text.strip()) or _ELOGIO.search(text):
+    if _PUTARIA.search(text):
+        achados.add("putaria")
+    # "papo" é o guarda-chuva dos dois, porque o tratamento é o mesmo: ficar seca.
+    # "elogio" existe à parte porque só ele conta como chegada ousada; um "tudo
+    # bem" não é ousadia nenhuma e não merece o áudio de abertura.
+    if _SO_PAPO.match(text.strip()):
         achados.add("papo")
+    if _ELOGIO.search(text):
+        achados.update({"papo", "elogio"})
 
-    # "papo" é o que sobra quando a mensagem não diz nada além disso. Se ela
-    # também pergunta preço ou como funciona, o que manda é a compra, não a sala:
-    # senão um "linda, como funciona?" seria tratado como conversa fiada.
-    if achados - {"papo"} or wants_to_buy(text):
-        achados.discard("papo")
+    # Papo é o que sobra quando a mensagem não diz nada além disso. Se ela também
+    # pergunta preço ou como funciona, o que manda é a compra, não a sala: senão
+    # um "linda, como funciona?" seria tratado como conversa fiada.
+    if achados - {"papo", "elogio"} or wants_to_buy(text):
+        achados.difference_update({"papo", "elogio"})
     return frozenset(achados)
 
 
@@ -243,6 +267,9 @@ class Stance:
     # fecha para sempre. Quem escreve é o webhook, para `decide` seguir sem
     # efeito colateral e continuar fácil de testar.
     mute: bool = False
+    # Chegada ousada: pede o áudio de abertura, aquele que fala o nome da pessoa
+    # e diz que o resto está no Telegram. Quem manda é o webhook, que tem o nome.
+    abertura: bool = False
     farewell: Away | None = None
     support: bool = False
     reason: str = "normal"
@@ -293,6 +320,27 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
     # Erro de pagamento é de quem está tentando comprar: isso nunca corta.
     if "erro_pagamento" in flags:
         return contando("replies", reason="erro_pagamento")
+
+    # Chegou na primeira mensagem já elogiando ou já falando de sexo. Quem abre
+    # assim não precisa ser aquecido, precisa saber onde comprar: vai o áudio de
+    # abertura com o nome dele e o link, sem rodeio.
+    if not _n(lead, "replies") and flags & {"elogio", "putaria"}:
+        return contando("replies", abertura=True, reason="chegada_ousada")
+
+    # Depois do link a conversa tem um assunto só. Dúvida sobre a compra ela
+    # responde à vontade; qualquer outra coisa ganha UMA resposta e ela sai de
+    # cena. No dia 11 nenhuma das conversas que continuaram depois do link virou
+    # venda, então esticar aqui é só gastar mensagem.
+    if lead.get("link_sent"):
+        sobre_a_compra = bool(flags & {"duvida_fluxo", "como_funciona"}) or wants_to_buy(text)
+        if not sobre_a_compra:
+            # Vira teto em vez de contador para o corte só poder antecipar o fim,
+            # nunca atrasar: quem já gastou as respostas não ganha uma extra por
+            # ter mudado de assunto.
+            teto = min(settings.max_replies_without_sale, _n(lead, "link_sent_at") + 1)
+            if _n(lead, "replies") >= teto:
+                return calado("fora_do_assunto_depois_do_link")
+            return contando("replies", farewell=away_excuse(), reason="ultima_depois_do_link")
 
     if "ia" in flags:
         vezes = _n(lead, "ai_strikes")

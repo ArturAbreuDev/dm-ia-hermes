@@ -36,6 +36,17 @@ FLUXO_DUVIDA = (
 )
 
 
+# Para quem chega na primeira mensagem já elogiando ou já falando de sexo. Diz o
+# nome da pessoa, diz onde é o lugar reservado e diz o que fazer. Nada de pergunta.
+ABERTURA = (
+    "oi {nome}, que gracinha você. "
+    "olha, aqui no instagram eu não posso mostrar quase nada, você sabe como é. "
+    "mas eu tenho um telegram meu, que é um lugar bem mais reservado, "
+    "e é lá que você encontra tudo o que eu não posso postar aqui. "
+    "é só escolher o plano que você quiser e você já é encaminhado pra dentro na hora."
+)
+
+
 @dataclass
 class Canned:
     nome: str
@@ -45,6 +56,18 @@ class Canned:
 
 GERAL = Canned("fluxo_geral", FLUXO_GERAL, "audio_fluxo_geral")
 DUVIDA = Canned("fluxo_duvida", FLUXO_DUVIDA, "audio_fluxo_duvida")
+
+
+def abertura(primeiro_nome: str | None) -> Canned:
+    """O áudio de chegada, com o nome de quem mandou a mensagem.
+
+    O nome entra no texto, então cada nome vira um clipe próprio. Isso é de
+    propósito: `url_for` guarda o áudio pela assinatura do texto, então o mesmo
+    nome só é gerado uma vez e depois é reaproveitado por todo mundo que se chama
+    assim. Sem nome ela fala "amor", que é como ela chamaria alguém mesmo.
+    """
+    nome = (primeiro_nome or "").strip() or "amor"
+    return Canned("abertura", ABERTURA.format(nome=nome.lower()), "audio_abertura")
 
 
 def pick(reply: str, flags, lead: dict) -> Canned | None:
