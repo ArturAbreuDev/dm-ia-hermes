@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
 from app.services import instagram, stories
-from app.store import memory, story_context
+from app.store import memory, runtime, story_context
 
 router = APIRouter(include_in_schema=False)
 
@@ -65,7 +65,20 @@ _AVISOS = {
         "bloquear quem já mandou DM alguma vez.",
     ),
     "liberado": ("ok", "Liberado. Ela volta a responder essa pessoa."),
+    "checkout-straton": ("ok", "Checkout da Straton ativo. As DMs vão mandar o bot do Telegram."),
+    "checkout-botgram": ("ok", "Checkout do Botgram ativo. As DMs vão mandar a página de planos."),
+    "checkout-invalido": ("erro", "Escolha Straton ou Botgram."),
 }
+
+
+@router.post("/diario/checkout")
+def escolher_checkout(k: str = Form(...), provider: str = Form(...)) -> RedirectResponse:
+    _check(k)
+    escolhido = (provider or "").strip().lower()
+    if escolhido not in {"straton", "botgram"}:
+        return RedirectResponse(url=f"/diario?k={k}&aviso=checkout-invalido", status_code=303)
+    runtime.set("checkout_provider", escolhido)
+    return RedirectResponse(url=f"/diario?k={k}&aviso=checkout-{escolhido}", status_code=303)
 
 
 @router.post("/diario/bloquear")
@@ -133,6 +146,16 @@ li .quando { display: block; color: #74747f; font-size: 12px; margin-top: 4px; }
 form.inline { display: flex; gap: 8px; }
 form.inline input { flex: 1; }
 form.inline button { width: auto; padding: 14px 18px; white-space: nowrap; }
+.opcoes { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.opcao {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: #17171c; border: 1px solid #22222a; border-radius: 12px;
+  padding: 12px 14px; cursor: pointer;
+}
+.opcao:has(input:checked) { border-color: #e1306c; background: #1c1418; }
+.opcao input { margin-top: 3px; accent-color: #e1306c; }
+.opcao .nome { font-weight: 600; }
+.opcao .detalhe { display: block; color: #9a9aa5; font-size: 13px; margin-top: 2px; word-break: break-all; }
 """
 
 
@@ -174,6 +197,40 @@ def _bloco_bloqueio(k: str) -> str:
     return '<p class="vazio">Ninguém bloqueado.</p>'
 
 
+def _bloco_checkout(k: str) -> str:
+    settings = get_settings()
+    ativo = settings.checkout_provider()
+    straton_url = html.escape(settings.checkout_url_straton or "")
+    botgram_url = html.escape(settings.checkout_url_botgram or "")
+    check_s = "checked" if ativo == "straton" else ""
+    check_b = "checked" if ativo == "botgram" else ""
+    return f"""
+  <h2>Checkout</h2>
+  <p class="sub" style="margin-bottom:12px">Qual link ela manda nas DMs e no
+  disparo. A troca vale na hora, sem precisar subir de novo.</p>
+  <form method="post" action="/diario/checkout">
+    <input type="hidden" name="k" value="{html.escape(k)}">
+    <div class="opcoes">
+      <label class="opcao">
+        <input type="radio" name="provider" value="straton" {check_s}>
+        <span>
+          <span class="nome">Straton (Telegram)</span>
+          <span class="detalhe">CTA /vip abre @{html.escape(settings.telegram_vip_bot())} · PIX Straton · R$ {html.escape(settings.price_straton)}</span>
+        </span>
+      </label>
+      <label class="opcao">
+        <input type="radio" name="provider" value="botgram" {check_b}>
+        <span>
+          <span class="nome">Botgram (planos)</span>
+          <span class="detalhe">{botgram_url} · R$ {html.escape(settings.price_botgram)}</span>
+        </span>
+      </label>
+    </div>
+    <button type="submit" style="width:100%">Usar este checkout</button>
+  </form>
+"""
+
+
 def _page(k: str, aviso: str = "") -> str:
     itens = story_context.recent(limit=30)
     if itens:
@@ -204,6 +261,7 @@ def _page(k: str, aviso: str = "") -> str:
     tom, texto = _AVISOS.get(aviso, ("", ""))
     faixa = f'<div class="aviso {tom}">{texto}</div>' if texto else ""
     bloqueados = _bloco_bloqueio(k)
+    checkout = _bloco_checkout(k)
     return f"""<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -211,9 +269,15 @@ def _page(k: str, aviso: str = "") -> str:
 <body><div class="wrap">
   <h1>Diário da Lívia</h1>
   <p class="sub">Escreva o que você fez, do seu jeito. A Lívia do Instagram vai
-  responder as DMs sabendo disso. Cada anotação vale por 7 dias.</p>
+  responder as DMs sabendo disso. Cada anotação vale por 7 dias.
+  <a href="/publicar?k={seguro}" style="color:#e1306c">Programar posts / prévias →</a>
+  <a href="/fluxo?k={seguro}" style="color:#e1306c;margin-left:12px">Funil do bot →</a>
+  <a href="/pedidos?k={seguro}" style="color:#e1306c;margin-left:12px">Pedidos →</a>
+  <a href="/linktree?k={seguro}" style="color:#e1306c;margin-left:12px">Linktree →</a></p>
 
   {faixa}
+
+  {checkout}
 
   <form class="novo" method="post" action="/diario">
     <input type="hidden" name="k" value="{seguro}">

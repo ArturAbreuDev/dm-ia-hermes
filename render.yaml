@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: dm-ia-hermes
+    runtime: docker
+    plan: free
+    healthCheckPath: /docs
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"

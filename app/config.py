@@ -37,10 +37,26 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_default_chat_id: str = ""
+    # Quem recebe o aviso de conversa quente. Vazio cai no chat acima. Sem token
+    # ou sem destino o aviso não sai, e isso fica no log em vez de virar erro.
+    alerts_enabled: bool = True
+    alert_chat_id: str = ""
     # O grupo/canal onde o Botgram joga quem comprou. Estar lá dentro é a prova
     # de pagamento mais confiável que temos sem API de checkout.
     telegram_group_chat_id: str = ""
+    # Grupo de prévias (ex.: "livia porevias"). Só postagens do /publicar.
+    # Nunca mistura com o chat pessoal nem com o VIP de quem pagou.
+    telegram_previews_chat_id: str = ""
     telegram_webhook_secret: str = ""
+    # Chave live/test da StratonBot (sb_live_… / sb_test_…). Serve pra listar
+    # PIX pendente e avisar antes de expirar.
+    straton_api_key: str = ""
+    # Segredo do webhook da Straton (HMAC). Se vazio, cai no payment_webhook_secret.
+    straton_webhook_secret: str = ""
+    # Protege o cron de recuperação de PIX. Vercel Cron manda Authorization: Bearer.
+    cron_secret: str = ""
+    # API key do cron-job.org (Settings → API). Dispara o RMK a cada 5 min no Hobby.
+    cronjobs_api_key: str = ""
 
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
@@ -61,19 +77,17 @@ class Settings(BaseSettings):
     # Depois que a pessoa paga, a conversa se despede em poucas mensagens.
     post_payment_replies: int = 2
     # Conversa que não vira venda tem fim: ela se despede e para de responder.
-    max_replies_without_sale: int = 16
+    max_replies_without_sale: int = 8
     # Depois de já ter mandado o link, insistir não converte.
-    max_replies_after_link: int = 6
-    # Quantas vezes ela desconversa antes de desistir de quem só quer de graça.
-    freebie_strikes: int = 2
+    max_replies_after_link: int = 3
+    # Uma recusa; na segunda ela some.
+    freebie_strikes: int = 1
     # Quem insiste que ela é robô não é convencido, é perdido.
-    ai_strikes: int = 2
-    # Quantas vezes ela desconversa sobre gravar/encontrar antes de deixar morrer.
-    live_strikes: int = 3
-    # Teto de quem só faz sala e só elogia. No dia 11 a conversa mais longa teve
-    # 46 mensagens dele e não vendeu nada, e a venda saiu da conversa mais curta:
-    # insistir com quem só puxa conversa gasta o dia e não converte.
-    small_talk_replies: int = 8
+    ai_strikes: int = 1
+    # Uma recusa vendendo o pack; na segunda ela some.
+    live_strikes: int = 1
+    # Sala e elogio não entram na conversa. Zero = vácuo na hora.
+    small_talk_replies: int = 0
 
     # Segredo compartilhado com a plataforma de checkout. Sem ele o webhook de
     # pagamento recusa tudo, para ninguém marcar lead como pago de fora.
@@ -83,12 +97,90 @@ class Settings(BaseSettings):
     # AbacatePay usa "externalId". Vazio desliga o rastreio.
     checkout_ref_param: str = ""
 
+    def checkout_provider(self) -> str:
+        """Qual checkout está ativo agora: straton ou botgram.
+
+        O /diario pode trocar isso no banco. Sem escolha salva, vale o padrão
+        da env (CHECKOUT_DEFAULT), e na falta disso a Straton.
+        """
+        from app.store import runtime
+
+        escolhido = (runtime.get("checkout_provider") or "").strip().lower()
+        if escolhido in {"straton", "botgram"}:
+            return escolhido
+        padrao = (self.checkout_default or "straton").strip().lower()
+        return padrao if padrao in {"straton", "botgram"} else "straton"
+
+    def telegram_vip_bot(self) -> str:
+        """Username do bot nosso (funil / Start), sem @."""
+        raw = self.telegram_sales_url or "https://t.me/liviagommes_bot"
+        parte = raw.rstrip("/").split("/")[-1]
+        return parte.lstrip("@") or "liviagommes_bot"
+
+    def chat_dono_privado(self) -> str:
+        """Seu Telegram pessoal. Nunca grupo, nunca prévia, nunca VIP."""
+        for bruto in (self.telegram_default_chat_id, self.alert_chat_id):
+            cid = str(bruto or "").strip()
+            if cid and not cid.startswith("-"):
+                return cid
+        return ""
+
+    def straton_checkout_bot(self) -> str:
+        """Bot antigo da Straton (não é mais o CTA)."""
+        raw = self.checkout_url_straton or "https://t.me/liviagomesvip_bot"
+        parte = raw.rstrip("/").split("/")[-1]
+        return parte.lstrip("@").split("?")[0] or "liviagomesvip_bot"
+
+    def active_price_amount(self) -> float:
+        limpo = (self.price_straton or "24,90").split("ou")[0]
+        limpo = limpo.replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".")
+        try:
+            return float(limpo)
+        except ValueError:
+            return 24.9
+
+    def active_checkout_url(self) -> str:
+        """O link que a IA e o outreach devem mandar agora."""
+        if self.checkout_provider() == "botgram":
+            return self.checkout_url_botgram or self.checkout_url
+        # t.me aberto no Instagram cai na tela genérica (Google/Telegram em inglês).
+        # Mandamos nossa página /vip, que abre o app direto.
+        if self.base_url:
+            return f"{self.base_url}/vip"
+        return f"https://t.me/{self.telegram_vip_bot()}"
+
+    def all_checkout_urls(self) -> list[str]:
+        """Todos os links conhecidos, para achar e limpar o que já saiu."""
+        urls = [
+            f"https://t.me/{self.telegram_vip_bot()}",
+            self.checkout_url_straton,
+            self.checkout_url_botgram,
+            self.checkout_url,
+        ]
+        if self.base_url:
+            urls.append(f"{self.base_url}/vip")
+        return [u for u in urls if u]
+
+    def active_price(self) -> str:
+        if self.checkout_provider() == "botgram":
+            return self.price_botgram
+        return self.price_straton
+
+    def active_price_spoken(self) -> str:
+        if self.checkout_provider() == "botgram":
+            return self.price_spoken_botgram
+        return self.price_spoken_straton
+
     def checkout_link(self, igsid: str | None = None) -> str:
-        """O link de venda, com a marca do lead quando a plataforma permite."""
-        if not self.checkout_url or not self.checkout_ref_param or not igsid:
-            return self.checkout_url
-        juncao = "&" if "?" in self.checkout_url else "?"
-        return f"{self.checkout_url}{juncao}{self.checkout_ref_param}={igsid}"
+        """O link de venda ativo, com a marca do lead quando a plataforma permite."""
+        base = self.active_checkout_url()
+        if not base or not self.checkout_ref_param or not igsid:
+            return base
+        # Link de Telegram (t.me/...) não aceita query string do nosso jeito.
+        if "t.me/" in base:
+            return base
+        juncao = "&" if "?" in base else "?"
+        return f"{base}{juncao}{self.checkout_ref_param}={igsid}"
 
     # Quando a Lívia responde na mão, o bot sai de cena por um tempo. A janela
     # reinicia a cada mensagem dela, e volta sozinha quando ela para.
@@ -112,8 +204,29 @@ class Settings(BaseSettings):
 
     business_name: str = "Livia Gomes"
     business_tone: str = "feminina, confiante, provocante de maneira sutil"
+    # Fallback legado. O ativo vem de active_checkout_url().
     checkout_url: str = ""
+    checkout_url_straton: str = "https://t.me/liviagomesvip_bot"
+    checkout_url_botgram: str = "https://botgram.club/livia-gomes-fotos"
+    checkout_default: str = "straton"
+    price_straton: str = "24,90"
+    price_spoken_straton: str = "vinte e quatro reais e noventa"
+    # Pack pra quem pagou PIX na DM (sem Telegram). URL pública (Blob). Vazio = só avisa você.
+    pack_delivery_url: str = ""
+    price_botgram: str = "19,90, 29,90 ou 39,90"
+    price_spoken_botgram: str = (
+        "dezenove e noventa, vinte e nove e noventa ou trinta e nove e noventa"
+    )
+    # Mantidos por compatibilidade com scripts/testes antigos; preferir active_*.
+    price: str = "24,90"
+    price_spoken: str = "vinte e quatro reais e noventa"
+    # Token do Vercel Blob (free 1 GB). Sem ele, mídia vai pro Neon.
+    blob_read_write_token: str = ""
     whatsapp_url: str = ""
+    # Linktree: @ do Instagram (sem @), canal de prévias e Privacy.
+    instagram_handle: str = ""
+    telegram_previews_url: str = ""
+    privacy_url: str = ""
     telegram_sales_url: str = ""
     handoff_keywords: str = ""
     history_limit: int = 30

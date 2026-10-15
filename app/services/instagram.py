@@ -22,6 +22,20 @@ def send_audio_message(recipient_id: str, audio_url: str) -> dict[str, Any]:
     )
 
 
+def send_image_message(recipient_id: str, image_url: str) -> dict[str, Any]:
+    return _send(
+        recipient_id,
+        {"attachment": {"type": "image", "payload": {"url": image_url}}},
+    )
+
+
+def send_video_message(recipient_id: str, video_url: str) -> dict[str, Any]:
+    return _send(
+        recipient_id,
+        {"attachment": {"type": "video", "payload": {"url": video_url}}},
+    )
+
+
 def send_sender_action(recipient_id: str, action: str) -> None:
     """Mostra os indicadores nativos da DM: visualizado e "digitando...".
 

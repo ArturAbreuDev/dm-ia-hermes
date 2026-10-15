@@ -1,7 +1,7 @@
 from app.config import get_settings
 from app.services import canned, engagement
 
-CHECKOUT = get_settings().checkout_url or "https://botgram.club/livia-gomes-fotos"
+CHECKOUT = get_settings().active_checkout_url()
 
 
 def test_reconhece_duvida_sobre_o_fluxo() -> None:

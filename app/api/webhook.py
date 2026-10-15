@@ -11,8 +11,10 @@ import httpx
 
 from app.config import get_settings
 from app.services import (
+    alert,
     canned,
     engagement,
+    ig_checkout,
     incoming,
     payment,
     purchase,
@@ -65,6 +67,12 @@ async def receive_webhook(
 
     # Na Vercel o background task pode morrer ao responder; processa na hora.
     process_instagram_event(payload)
+    try:
+        from app.services import telegram_sales
+
+        telegram_sales.process_due(limit=3)
+    except Exception:
+        logger.exception("RMK Telegram falhou no webhook do Instagram")
     return {"status": "accepted"}
 
 
@@ -207,6 +215,8 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     memory.save_message(sender_id, "user", text, mid=mid)
 
     perfil = get_user_profile(sender_id)
+    memory.remember_username(sender_id, perfil.get("username"))
+    memory.remember_name(sender_id, perfil.get("name"))
 
     # Estar no grupo do Telegram é prova de compra; a palavra dele é só indício.
     if purchase.confirm_via_telegram(sender_id, perfil.get("username")):
@@ -234,6 +244,15 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     if stance.mute and not lead.get("muted"):
         memory.set_muted(sender_id, True)
         logger.info("IGSID=%s silenciado de vez: %s", sender_id, stance.reason)
+
+    # O aviso vem antes do silêncio de propósito. O caso mais valioso de todos é
+    # justamente o que ela decidiu não responder: alguém falando de pagar depois
+    # de a conversa ter esgotado o limite. Se o aviso ficasse embaixo do return,
+    # esse é exatamente o que a gente nunca veria.
+    alert.maybe_notify(
+        sender_id, text, stance.flags, already_paid, lead, perfil, calada=stance.silent
+    )
+
     if stance.silent:
         logger.info("Ignorado IGSID=%s: %s", sender_id, stance.reason)
         return
@@ -250,8 +269,28 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         return
 
     stories.maybe_sync()
-    as_voice = voice.is_voice_moment(text, incoming_is_audio, sales_open=not already_paid)
     first_name = voice.first_speakable_name(perfil)
+
+    if not already_paid and "sem_telegram" in stance.flags:
+        try:
+            texto = ig_checkout.enviar_pix(
+                sender_id, first_name or (perfil.get("name") if perfil else None)
+            )
+        except Exception:
+            logger.exception("PIX Instagram falhou para %s", sender_id)
+            texto = "não rolou gerar o pix agora. tenta de novo em um minutinho."
+        send_sender_action(sender_id, "mark_seen")
+        send_sender_action(sender_id, "typing_on")
+        if not _enviar_em_partes(sender_id, texto):
+            return
+        send_sender_action(sender_id, "typing_off")
+        for campo in stance.counters:
+            memory.bump_lead_counter(sender_id, campo)
+        memory.set_lead_flag(sender_id, "pix_ig_enviado", True)
+        logger.info("PIX Instagram enviado IGSID=%s", sender_id)
+        return
+
+    as_voice = voice.is_voice_moment(text, incoming_is_audio, sales_open=not already_paid)
 
     result = generate_sales_reply(
         sender_id,
@@ -259,7 +298,7 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
         first_name=first_name,
         as_voice=as_voice,
         story_reply=chegada.story_reply,
-        must_reply=chegada.is_media and not already_paid,
+        must_reply=False,
         already_paid=already_paid,
         stance=stance,
     )
@@ -321,7 +360,7 @@ def _handle_messaging_event(event: dict[str, Any]) -> None:
     send_sender_action(sender_id, "typing_off")
     for campo in stance.counters:
         memory.bump_lead_counter(sender_id, campo)
-    if settings.checkout_url and settings.checkout_url in result.reply:
+    if any(url and url in result.reply for url in settings.all_checkout_urls()):
         memory.mark_link_sent(sender_id)
 
     # Explicar o fluxo é sempre a mesma explicação, e falada convence mais.

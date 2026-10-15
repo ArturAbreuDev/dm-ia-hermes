@@ -18,12 +18,20 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 router = APIRouter(include_in_schema=False)
 
-# Mesma ideia dita de três jeitos, para cinco pessoas não receberem a mesma frase.
-_CONVITES = (
-    "te mando o link e você escolhe por lá 😏",
-    "olha, é 10, 20 ou 30, escolhe aí 👀",
-    "deixa eu te mandar aqui, você escolhe o plano por lá 😏",
-)
+
+def _convites() -> tuple[str, ...]:
+    preco = get_settings().active_price()
+    if get_settings().checkout_provider() == "botgram":
+        return (
+            "te mando o link e você escolhe por lá 😏",
+            f"olha, é {preco}, escolhe aí 👀",
+            "deixa eu te mandar aqui, você escolhe o plano por lá 😏",
+        )
+    return (
+        "te mando o link e você resolve por lá 😏",
+        f"olha, é {preco}, entra aí 👀",
+        "deixa eu te mandar aqui 😏",
+    )
 
 
 class OutreachRequest(BaseModel):
@@ -44,16 +52,17 @@ def outreach_flow(payload: OutreachRequest, k: str | None = None) -> dict:
         raise HTTPException(status_code=503, detail="DIARY_PASSWORD não configurada")
     if k != settings.admin_key:
         raise HTTPException(status_code=403, detail="Chave inválida")
-    if not settings.checkout_url:
-        raise HTTPException(status_code=400, detail="CHECKOUT_URL não configurada")
+    link = settings.active_checkout_url()
+    if not link:
+        raise HTTPException(status_code=400, detail="Checkout não configurado")
 
     url_audio = canned.url_for(canned.GERAL) if payload.audio else None
     resultados = []
 
     for igsid in payload.igsids:
         item: dict = {"igsid": igsid}
-        convite = payload.text or random.choice(_CONVITES)
-        mensagem = f"{convite} {settings.checkout_url}"
+        convite = payload.text or random.choice(_convites())
+        mensagem = f"{convite} {link}"
         try:
             enviado = send_text_message(igsid, mensagem) or {}
             memory.save_message(igsid, "assistant", mensagem, mid=enviado.get("message_id"))

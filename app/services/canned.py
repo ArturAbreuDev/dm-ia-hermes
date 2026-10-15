@@ -17,33 +17,61 @@ from app.store import media
 
 logger = logging.getLogger(__name__)
 
+
+def _preco() -> str:
+    return get_settings().active_price_spoken()
+
+
+def _tem_varios_planos() -> bool:
+    return "ou" in get_settings().active_price()
+
+
 # Como funciona, do começo ao fim. Vai junto quando o link sai.
-FLUXO_GERAL = (
-    "oi amor, deixa eu te explicar como funciona que é bem simples. "
-    "você entra no meu link, e é ali dentro que você escolhe o plano que quiser. "
-    "assim que você escolhe e paga, você já cai direto no grupo, na hora. "
-    "e quanto maior o plano, mais coisinha você vai encontrar lá dentro. "
-    "é só isso, sem complicação nenhuma."
-)
+def _fluxo_geral() -> str:
+    if _tem_varios_planos():
+        return (
+            "é simples. entra no link, escolhe o plano, "
+            + _preco()
+            + ", paga e cai no grupo na hora. "
+            "quanto maior o plano, mais coisa tem. "
+            "é isso."
+        )
+    return (
+        "é simples. entra no link, paga "
+        + _preco()
+        + " e cai no grupo na hora. "
+        "é isso."
+    )
+
 
 # Para quem abriu o link e estranhou não ter caído no Telegram na hora.
-FLUXO_DUVIDA = (
-    "amor, aquela página que você abriu tá certinha, é ali mesmo que você escolhe o plano. "
-    "o link não te joga no telegram direto, ele te leva pra escolher primeiro. "
-    "você escolhe o plano ali, faz o pagamento, e aí sim você cai direto no grupo. "
-    "e quanto maior o plano, mais coisinha tem lá dentro. "
-    "pode ir tranquilo que tá tudo certo."
-)
+def _fluxo_duvida() -> str:
+    if _tem_varios_planos():
+        return (
+            "aquela página tá certa. o link não joga no telegram direto, "
+            "é pra escolher o plano primeiro. "
+            "escolhe entre "
+            + _preco()
+            + ", paga, e aí cai no grupo. "
+            "não tem outro caminho."
+        )
+    return (
+        "aquela página tá certa. o link não joga no telegram direto, "
+        "é pra pagar primeiro. "
+        "paga "
+        + _preco()
+        + " ali e cai no grupo. "
+        "não tem outro caminho."
+    )
 
 
 # Para quem chega na primeira mensagem já elogiando ou já falando de sexo. Diz o
 # nome da pessoa, diz onde é o lugar reservado e diz o que fazer. Nada de pergunta.
 ABERTURA = (
-    "oi {nome}, que gracinha você. "
-    "olha, aqui no instagram eu não posso mostrar quase nada, você sabe como é. "
-    "mas eu tenho um telegram meu, que é um lugar bem mais reservado, "
-    "e é lá que você encontra tudo o que eu não posso postar aqui. "
-    "é só escolher o plano que você quiser e você já é encaminhado pra dentro na hora."
+    "{nome}. "
+    "aqui no instagram eu não mostro quase nada. "
+    "o conteúdo tá no telegram. "
+    "{cta}"
 )
 
 
@@ -54,8 +82,29 @@ class Canned:
     campo: str  # marca no lead, para não repetir com a mesma pessoa
 
 
-GERAL = Canned("fluxo_geral", FLUXO_GERAL, "audio_fluxo_geral")
-DUVIDA = Canned("fluxo_duvida", FLUXO_DUVIDA, "audio_fluxo_duvida")
+def geral() -> Canned:
+    return Canned("fluxo_geral", _fluxo_geral(), "audio_fluxo_geral")
+
+
+def duvida() -> Canned:
+    return Canned("fluxo_duvida", _fluxo_duvida(), "audio_fluxo_duvida")
+
+
+# Compatível com `is canned.GERAL` nos testes: o objeto muda o texto a cada
+# leitura via propriedade, mas a identidade do proxy permanece.
+class _CannedAoVivo:
+    def __init__(self, nome: str, campo: str, montar) -> None:
+        self.nome = nome
+        self.campo = campo
+        self._montar = montar
+
+    @property
+    def texto(self) -> str:
+        return self._montar()
+
+
+GERAL = _CannedAoVivo("fluxo_geral", "audio_fluxo_geral", _fluxo_geral)
+DUVIDA = _CannedAoVivo("fluxo_duvida", "audio_fluxo_duvida", _fluxo_duvida)
 
 
 def abertura(primeiro_nome: str | None) -> Canned:
@@ -67,7 +116,18 @@ def abertura(primeiro_nome: str | None) -> Canned:
     assim. Sem nome ela fala "amor", que é como ela chamaria alguém mesmo.
     """
     nome = (primeiro_nome or "").strip() or "amor"
-    return Canned("abertura", ABERTURA.format(nome=nome.lower()), "audio_abertura")
+    if _tem_varios_planos():
+        cta = (
+            f"escolhe o plano, {_preco()}, "
+            "e já é encaminhado pra dentro."
+        )
+    else:
+        cta = f"paga {_preco()} e já é encaminhado pra dentro."
+    return Canned(
+        "abertura",
+        ABERTURA.format(nome=nome.lower(), cta=cta),
+        "audio_abertura",
+    )
 
 
 def pick(reply: str, flags, lead: dict) -> Canned | None:
@@ -88,19 +148,26 @@ def pick(reply: str, flags, lead: dict) -> Canned | None:
     if quer_entender and not lead.get(GERAL.campo):
         return GERAL
 
-    checkout = settings.checkout_url
-    if checkout and checkout in (reply or "") and not lead.get(GERAL.campo):
-        return GERAL
+    # Qualquer um dos dois links conta: a troca no /diario não pode deixar
+    # o áudio de fluxo sem sair.
+    for url in settings.all_checkout_urls():
+        if url and url in (reply or "") and not lead.get(GERAL.campo):
+            return GERAL
 
     return None
 
 
-def url_for(item: Canned) -> str | None:
+def url_for(item: Canned | _CannedAoVivo) -> str | None:
     """URL do áudio, gerando só se ainda não existir."""
     settings = get_settings()
+    texto = item.texto
     assinatura = "|".join(
-        [item.texto, settings.elevenlabs_voice_id, settings.elevenlabs_model,
-         settings.elevenlabs_output_format]
+        [
+            texto,
+            settings.elevenlabs_voice_id,
+            settings.elevenlabs_model,
+            settings.elevenlabs_output_format,
+        ]
     )
     clip_id = hashlib.sha256(assinatura.encode()).hexdigest()[:32]
 
@@ -109,7 +176,7 @@ def url_for(item: Canned) -> str | None:
         extensao = "wav" if "wav" in guardado[1] else "mp3"
         return f"{settings.base_url}/media/audio/{clip_id}.{extensao}"
 
-    falado = voice_director.direct_for_speech(voice._strip_for_speech(item.texto))
+    falado = voice_director.direct_for_speech(voice._strip_for_speech(texto))
     clip = elevenlabs.synthesize(falado)
     if not clip:
         logger.warning("Não consegui gerar o áudio pronto %s", item.nome)

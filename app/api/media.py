@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.config import get_settings
@@ -88,6 +89,74 @@ def get_audio(filename: str) -> Response:
     found = media.get_audio(clip_id)
     if found is None:
         raise HTTPException(status_code=404, detail="Áudio não encontrado")
+    data, mime = found
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Content-Length": str(len(data)),
+        },
+    )
+
+
+@router.head("/media/funil/{node_id}/{campo}")
+@router.get("/media/funil/{node_id}/{campo}")
+def get_funil_midia(node_id: str, campo: str, request: Request) -> Response:
+    """URL pública com Content-Type certo — o Telegram não puxa Blob cru."""
+    from app.services import funnel
+
+    if campo not in {"video_url", "photo_url"}:
+        raise HTTPException(status_code=404, detail="campo inválido")
+    node = next(
+        (
+            n
+            for n in (funnel.load().get("nodes") or [])
+            if str(n.get("id")) == str(node_id)
+        ),
+        None,
+    )
+    url = str(((node or {}).get("data") or {}).get(campo) or "")
+    if not url.startswith("http"):
+        raise HTTPException(status_code=404, detail="mídia ausente")
+    if campo == "video_url":
+        return RedirectResponse(url, status_code=302)
+    headers: dict[str, str] = {}
+    faixa = request.headers.get("range")
+    if faixa:
+        headers["Range"] = faixa
+    try:
+        r = httpx.get(url, headers=headers, timeout=90, follow_redirects=True)
+        r.raise_for_status()
+    except Exception as erro:
+        raise HTTPException(status_code=502, detail="mídia indisponível") from erro
+    media_type = (r.headers.get("content-type") or "image/jpeg").split(";")[0]
+    out = {
+        "Cache-Control": "public, max-age=3600",
+        "Accept-Ranges": r.headers.get("accept-ranges") or "bytes",
+    }
+    if r.headers.get("content-length"):
+        out["Content-Length"] = r.headers["content-length"]
+    if r.headers.get("content-range"):
+        out["Content-Range"] = r.headers["content-range"]
+    return Response(
+        content=r.content,
+        status_code=r.status_code,
+        media_type=media_type,
+        headers=out,
+    )
+
+
+@router.head("/media/uploads/{filename}")
+@router.get("/media/uploads/{filename}")
+def get_upload(filename: str) -> Response:
+    """Serve foto/vídeo guardado pra a Meta baixar na hora de publicar."""
+    from app.store import uploads as uploads_store
+
+    upload_id = filename.rsplit(".", 1)[0]
+    found = uploads_store.get_bytes(upload_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
     data, mime = found
     return Response(
         content=data,

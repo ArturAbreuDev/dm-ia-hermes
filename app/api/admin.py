@@ -109,6 +109,38 @@ def sync_stories() -> dict[str, Any]:
     return {"descritos": descritos, "total": len(descritos)}
 
 
+@router.post("/alert/test")
+def testar_aviso(k: str | None = None) -> dict[str, Any]:
+    """Manda um aviso de mentira, para conferir se o celular apita.
+
+    Existe porque o aviso de verdade só aparece quando alguém está comprando, e
+    descobrir que o canal está quebrado na hora da venda é tarde demais.
+    """
+    _conferir_chave(k)
+    settings = get_settings()
+    destino = settings.chat_dono_privado()
+    if not settings.telegram_bot_token or not destino:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Canal de aviso incompleto: falta "
+                + ", ".join(
+                    nome
+                    for nome, valor in [
+                        ("TELEGRAM_BOT_TOKEN", settings.telegram_bot_token),
+                        ("ALERT_CHAT_ID ou TELEGRAM_DEFAULT_CHAT_ID", destino),
+                    ]
+                    if not valor
+                )
+            ),
+        )
+    telegram.send_text_message(
+        destino,
+        "TESTE DE AVISO\nSe você está lendo isso no celular, o canal está de pé.",
+    )
+    return {"status": "enviado", "destino": destino}
+
+
 @router.post("/simulate", response_model=SimulateResponse)
 def simulate_reply(payload: SimulateRequest) -> SimulateResponse:
     """Gera uma resposta de venda sem chamar o Instagram. Útil para testar o agente.
@@ -134,7 +166,7 @@ def simulate_reply(payload: SimulateRequest) -> SimulateResponse:
     for campo in stance.counters:
         memory.bump_lead_counter(payload.sender_id, campo)
     settings = get_settings()
-    if settings.checkout_url and settings.checkout_url in result.reply:
+    if any(url and url in result.reply for url in settings.all_checkout_urls()):
         memory.mark_link_sent(payload.sender_id)
 
     # O mesmo desvio do webhook. Aqui o nome sai vazio porque a simulação não

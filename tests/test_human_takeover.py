@@ -117,13 +117,13 @@ def test_durante_a_pausa_a_ia_nem_e_chamada(monkeypatch) -> None:
     )
 
     process_instagram_event(_eco("deixa que eu falo", f"manual-{time.time()}"))
-    process_instagram_event(_evento_do_usuario("oi?", f"user-{time.time()}"))
+    process_instagram_event(_evento_do_usuario("quanto custa?", f"user-{time.time()}"))
     assert chamadas == []
 
     # Vencida a janela sem mensagem nova dela, o bot volta sozinho.
     monkeypatch.setenv("HUMAN_TAKEOVER_MINUTES", "0")
     get_settings.cache_clear()
-    process_instagram_event(_evento_do_usuario("alô?", f"user2-{time.time()}"))
+    process_instagram_event(_evento_do_usuario("quanto custa?", f"user2-{time.time()}"))
     assert len(chamadas) == 1
 
     monkeypatch.delenv("HUMAN_TAKEOVER_MINUTES", raising=False)

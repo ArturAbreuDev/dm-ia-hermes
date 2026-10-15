@@ -116,7 +116,19 @@ _QUER_COMPRAR = re.compile(
     r"\bqual\s+o\s+(?:valor|pre[çc]o)\b|"
     r"\bpode\s+mandar\s+o\s+link\b|"
     r"\bvou\s+fazer\s+o\s+pix\b|"
-    r"\bqueria\s+(?:comprar|assinar)\b"
+    r"\bqueria\s+(?:comprar|assinar)\b|"
+    r"\b(?:pack|assinatura|telegram|privacy|priv)\b|"
+    r"tem\s+(?:mais|conte[úu]do|pack)|"
+    r"onde\s+(?:vejo|compra|assina)|"
+    r"(?:voc[êe]|vc)\s+vende|"
+    r"quero\s+(?:ver|o\s+telegram|entrar)\b|"
+    # Quem já está no checkout falando do PIX: isso é venda, não papo.
+    r"\bpix\b|"
+    r"\bqr\s*code\b|\bc[óo]digo\s+(?:pix|copia)|"
+    r"\bger(ei|ando|ou)\s+(?:o\s+)?pix\b|"
+    r"\bt[ôo]\s+pagando\b|"
+    r"\bn[ãa]o\s+(?:caiu|entrou|liberou)\b|"
+    r"\bexpirou\b|\bvenceu\b"
     r")",
     re.IGNORECASE,
 )
@@ -166,8 +178,19 @@ _COMO_FUNCIONA = re.compile(
 )
 
 
-# Só está fazendo sala: cumprimento e "tudo bem". A mensagem inteira tem que ser
-# isso, senão qualquer "oi, quanto custa" cairia aqui também.
+# Sem Telegram: paga PIX na DM e o pack sai no chat, não no grupo.
+_SEM_TELEGRAM = re.compile(
+    r"(?:"
+    r"n[ãa]o\s+(?:tenho|uso|baixo|quero)\s+(?:o\s+)?telegram|"
+    r"sem\s+telegram|"
+    r"n[ãa]o\s+(?:uso|tenho)\s+(?:tg|tele)|"
+    r"manda\s+(?:aqui|no\s+(?:insta|instagram|chat|direct|dm))|"
+    r"s[óo]\s+(?:no|pelo|pra)\s+(?:insta|instagram|chat|direct|aqui)|"
+    r"n[ãa]o\s+(?:quero|vou)\s+(?:pro|pro\s+|para\s+o\s+)?telegram|"
+    r"pode\s+(?:ser|mandar)\s+(?:no|pelo)\s+(?:insta|instagram|chat)"
+    r")",
+    re.IGNORECASE,
+)
 _SO_PAPO = re.compile(
     r"^(?:(?:oi+|ol[áa]|eae|e\s*a[íi]|opa|fala|hey|hi|bom\s+dia|boa\s+(?:tarde|noite))"
     r"[\s,!.?]*)*"
@@ -235,6 +258,8 @@ def read_flags(text: str) -> frozenset[str]:
         achados.add("duvida_fluxo")
     if _COMO_FUNCIONA.search(text):
         achados.add("como_funciona")
+    if _SEM_TELEGRAM.search(text):
+        achados.add("sem_telegram")
     if _PUTARIA.search(text):
         achados.add("putaria")
     # "papo" é o guarda-chuva dos dois, porque o tratamento é o mesmo: ficar seca.
@@ -250,6 +275,8 @@ def read_flags(text: str) -> frozenset[str]:
     # um "linda, como funciona?" seria tratado como conversa fiada.
     if achados - {"papo", "elogio"} or wants_to_buy(text):
         achados.difference_update({"papo", "elogio"})
+    if wants_to_buy(text):
+        achados.add("quer_comprar")
     return frozenset(achados)
 
 
@@ -322,25 +349,33 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
         return contando("replies", reason="erro_pagamento")
 
     # Chegou na primeira mensagem já elogiando ou já falando de sexo. Quem abre
-    # assim não precisa ser aquecido, precisa saber onde comprar: vai o áudio de
-    # abertura com o nome dele e o link, sem rodeio.
+    # assim não precisa de papo: vai o áudio de abertura com o nome e o link.
     if not _n(lead, "replies") and flags & {"elogio", "putaria"}:
         return contando("replies", abertura=True, reason="chegada_ousada")
 
-    # Depois do link a conversa tem um assunto só. Dúvida sobre a compra ela
-    # responde à vontade; qualquer outra coisa ganha UMA resposta e ela sai de
-    # cena. No dia 11 nenhuma das conversas que continuaram depois do link virou
-    # venda, então esticar aqui é só gastar mensagem.
+    # Sala, elogio, "oi", putaria depois da abertura, foto aleatória: vácuo.
+    if "papo" in flags or (not flags and not wants_to_buy(text)):
+        return calado("sem_intencao_de_compra")
+    if "putaria" in flags and _n(lead, "replies") and not wants_to_buy(text):
+        return calado("sem_intencao_de_compra")
+
+    # Depois do link só responde o que é compra. O resto some, sem despedida.
     if lead.get("link_sent"):
-        sobre_a_compra = bool(flags & {"duvida_fluxo", "como_funciona"}) or wants_to_buy(text)
+        sobre_a_compra = (
+            bool(
+                flags
+                & {
+                    "duvida_fluxo",
+                    "como_funciona",
+                    "erro_pagamento",
+                    "quer_comprar",
+                    "sem_telegram",
+                }
+            )
+            or wants_to_buy(text)
+        )
         if not sobre_a_compra:
-            # Vira teto em vez de contador para o corte só poder antecipar o fim,
-            # nunca atrasar: quem já gastou as respostas não ganha uma extra por
-            # ter mudado de assunto.
-            teto = min(settings.max_replies_without_sale, _n(lead, "link_sent_at") + 1)
-            if _n(lead, "replies") >= teto:
-                return calado("fora_do_assunto_depois_do_link")
-            return contando("replies", farewell=away_excuse(), reason="ultima_depois_do_link")
+            return calado("fora_do_assunto_depois_do_link")
 
     if "ia" in flags:
         vezes = _n(lead, "ai_strikes")
@@ -352,7 +387,7 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
         vezes = _n(lead, "free_strikes")
         if vezes >= settings.freebie_strikes:
             return calado("so_quer_de_graca")
-        if vezes == settings.freebie_strikes - 1:
+        if vezes == settings.freebie_strikes - 1 and settings.freebie_strikes > 1:
             return contando(
                 "replies",
                 "free_strikes",
@@ -366,7 +401,7 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
         vezes = _n(lead, "live_strikes")
         if vezes >= settings.live_strikes:
             return calado("insiste_em_gravar")
-        if vezes == settings.live_strikes - 1:
+        if vezes == settings.live_strikes - 1 and settings.live_strikes > 1:
             return contando(
                 "replies",
                 "live_strikes",
@@ -376,27 +411,18 @@ def decide(lead: dict, text: str, paid: bool) -> Stance:
             )
         return contando("replies", "live_strikes", reason="quer_ao_vivo", repeats=vezes)
 
+    if "sem_telegram" in flags:
+        return contando("replies", reason="sem_telegram")
+
     respostas = _n(lead, "replies")
     teto = settings.max_replies_without_sale
     if lead.get("link_sent"):
-        # Ele já tem o link na mão. Se não pagou até agora, conversa não resolve.
         teto = min(teto, _n(lead, "link_sent_at") + settings.max_replies_after_link)
 
-    # O teto curto vale pela mensagem de agora, não pelo histórico: se ele passou
-    # o dia fazendo sala e de repente pergunta o preço, "papo" já saiu dos sinais
-    # e o teto volta a ser o normal. Assim ela desiste do papo, não do cliente.
-    if "papo" in flags and not lead.get("link_sent"):
-        teto = min(teto, settings.small_talk_replies)
-
-    contadores = ("replies", "chat_strikes") if "papo" in flags else ("replies",)
     if respostas >= teto:
         return calado("conversa_longa_sem_compra")
     if respostas == teto - 1:
-        return contando(*contadores, farewell=away_excuse(), reason="ultima_sem_compra")
-    if "papo" in flags:
-        return contando(
-            *contadores, reason="so_papo", repeats=_n(lead, "chat_strikes")
-        )
+        return contando("replies", farewell=away_excuse(), reason="ultima_sem_compra")
     return contando("replies", reason="normal")
 
 

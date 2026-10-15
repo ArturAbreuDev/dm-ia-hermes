@@ -15,6 +15,9 @@ def _configurar(monkeypatch):
     monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", SEGREDO)
     monkeypatch.setenv("TELEGRAM_GROUP_CHAT_ID", GRUPO)
     get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.api.telegram_hook.telegram_sales.process_due", lambda limit=3: {}
+    )
 
 
 def _mandar(update, token=SEGREDO):
@@ -95,6 +98,25 @@ def test_mensagem_de_servico_tambem_registra(monkeypatch) -> None:
     assert telegram_members.find_by_username("botgramclub_bot") is None
 
 
+def test_start_privado_pelo_webhook(monkeypatch) -> None:
+    _configurar(monkeypatch)
+    monkeypatch.setattr(
+        "app.api.telegram_hook.telegram_sales.handle_private_message",
+        lambda msg: "start",
+    )
+    update = {
+        "message": {
+            "message_id": 1,
+            "chat": {"id": 55, "type": "private"},
+            "from": {"id": 55, "first_name": "Ana"},
+            "text": "/start",
+        }
+    }
+    r = _mandar(update)
+    assert r.status_code == 200
+    assert r.json()["privado"] == "start"
+
+
 def test_confirma_compra_pelo_arroba_igual(monkeypatch) -> None:
     """@ igual nas duas redes é a ponte entre Instagram e Telegram."""
     _configurar(monkeypatch)
@@ -136,3 +158,28 @@ def test_sem_grupo_configurado_nao_faz_nada(monkeypatch) -> None:
 
     memory.clear_paid(IGSID)
     assert not purchase.confirm_via_telegram(IGSID, "qualquer_um")
+
+
+def test_webhook_start_ainda_dispara_rmk(monkeypatch) -> None:
+    ticks = []
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", SEGREDO)
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "app.api.telegram_hook.telegram_sales.handle_private_message",
+        lambda *_a, **_k: "start",
+    )
+    monkeypatch.setattr(
+        "app.api.telegram_hook.telegram_sales.process_due",
+        lambda limit=3: ticks.append(limit) or {"due": 0},
+    )
+    r = _mandar(
+        {
+            "message": {
+                "chat": {"type": "private", "id": 11},
+                "from": {"id": 11, "first_name": "Lia"},
+                "text": "/start",
+            }
+        }
+    )
+    assert r.status_code == 200
+    assert ticks == [3]

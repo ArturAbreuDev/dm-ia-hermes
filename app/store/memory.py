@@ -313,6 +313,19 @@ def remember_username(sender_id: str, username: str | None) -> None:
     save_lead(sender_id, lead)
 
 
+def remember_name(sender_id: str, name: str | None) -> None:
+    if not name:
+        return
+    limpo = name.strip()
+    if not limpo:
+        return
+    lead = get_lead(sender_id)
+    if lead.get("name") == limpo:
+        return
+    lead["name"] = limpo
+    save_lead(sender_id, lead)
+
+
 def muted_leads() -> list[tuple[str, dict]]:
     """Contatos silenciados, do silenciamento mais recente para o mais antigo."""
     silenciados = [(s, d) for s, d in all_leads().items() if d.get("muted")]

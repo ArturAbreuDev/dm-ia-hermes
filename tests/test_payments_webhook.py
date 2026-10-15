@@ -108,15 +108,21 @@ def test_segredo_errado_e_recusado(monkeypatch) -> None:
 
 
 def test_link_leva_a_marca_do_lead(monkeypatch) -> None:
+    # Só o Botgram aceita query string; o da Straton é t.me e fica limpo.
+    # A escolha no /diario (banco) manda mais que a env, então força Botgram.
+    from app.store import runtime
+
+    runtime.set("checkout_provider", "botgram")
     monkeypatch.setenv("CHECKOUT_REF_PARAM", "src")
     get_settings.cache_clear()
     settings = get_settings()
-    if settings.checkout_url:
-        assert settings.checkout_link(IGSID).endswith(f"src={IGSID}")
+    assert settings.checkout_link(IGSID).endswith(f"src={IGSID}")
     # Sem o parâmetro configurado o link fica limpo, como está hoje.
     monkeypatch.delenv("CHECKOUT_REF_PARAM", raising=False)
     get_settings.cache_clear()
-    assert get_settings().checkout_link(IGSID) == get_settings().checkout_url
+    assert get_settings().checkout_link(IGSID) == get_settings().active_checkout_url()
+    runtime.set("checkout_provider", "straton")
+    get_settings.cache_clear()
 
 
 def _configurar(monkeypatch) -> None:

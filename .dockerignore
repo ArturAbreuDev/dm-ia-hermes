@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+__pycache__
+.tmp
+tmp
+.env
+.env*
+.vercel
+node_modules
+web/fluxo/node_modules
+*.db
+audios
+.pytest_cache

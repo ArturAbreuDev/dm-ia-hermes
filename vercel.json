@@ -5,5 +5,22 @@
     "app/main.py": {
       "maxDuration": 300
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/fluxo",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/v1/cron/publish-due",
+      "schedule": "0 15 * * *"
+    }
+  ]
 }
